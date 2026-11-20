@@ -77,7 +77,8 @@ export function buildConfig(env: Record<string, any>): AppConfig {
       .filter(Boolean),
     bot: {
       token: env.BOT_TOKEN,
-      username: env.BOT_USERNAME,
+      // People often paste it as "@name"; links need it without the @.
+      username: String(env.BOT_USERNAME).trim().replace(/^@/, ''),
       miniAppUrl: env.MINIAPP_URL,
       initDataMaxAge: env.INIT_DATA_MAX_AGE_SECONDS,
     },
