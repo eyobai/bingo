@@ -169,7 +169,14 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         this.assertSelling(round);
         const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
         if (user.isBlocked) throw new AppError(HttpStatus.FORBIDDEN, 'BLOCKED', 'Your account is blocked. Contact support.');
-        const owned = await tx.card.count({ where: { roundId, userId } });
+        // One query answers both "how many do I hold" and "is any of these taken".
+        const relevant = await tx.card.findMany({
+          where: { roundId, OR: [{ userId }, { cardNo: { in: unique } }] },
+          select: { cardNo: true, userId: true },
+        });
+        const owned = relevant.filter((c) => c.userId === userId).length;
+        const taken = relevant.filter((c) => unique.includes(c.cardNo));
+        if (taken.length) throw this.takenError(taken.map((t) => t.cardNo));
         if (owned + unique.length > l.room.maxCardsPerPlayer) {
           throw new AppError(
             HttpStatus.UNPROCESSABLE_ENTITY,
@@ -177,8 +184,6 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
             `You can hold up to ${l.room.maxCardsPerPlayer} cards per round.`,
           );
         }
-        const taken = await tx.card.findMany({ where: { roundId, cardNo: { in: unique } }, select: { cardNo: true } });
-        if (taken.length) throw this.takenError(taken.map((t) => t.cardNo));
 
         const { main, play } = await this.ledger.userAccounts(userId, tx);
         // Bonus (play) money is spent first, card by card.
@@ -496,9 +501,33 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     return l;
   }
 
+  /** Locks the round row and reads it in one statement. */
   private async lockRound(tx: Tx, roundId: string): Promise<Round> {
-    await tx.$queryRaw`SELECT id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE`;
-    return tx.round.findUniqueOrThrow({ where: { id: roundId } });
+    const rows = await tx.$queryRaw<Record<string, any>[]>`SELECT * FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE`;
+    const r = rows[0];
+    if (!r) throw new Error(`Round ${roundId} not found`);
+    return {
+      id: r.id,
+      number: r.number,
+      roomId: r.room_id,
+      status: r.status,
+      stakeMinor: r.stake_minor,
+      houseCutBps: r.house_cut_bps,
+      guaranteedMinor: r.guaranteed_minor,
+      serverSeed: r.server_seed,
+      seedHash: r.seed_hash,
+      selectEndsAt: r.select_ends_at,
+      startedAt: r.started_at,
+      finishedAt: r.finished_at,
+      calls: r.calls,
+      cardsSold: r.cards_sold,
+      stakeTotalMinor: r.stake_total_minor,
+      prizeMinor: r.prize_minor,
+      houseCutMinor: r.house_cut_minor,
+      topUpMinor: r.top_up_minor,
+      prizePerWinnerMinor: r.prize_per_winner_minor,
+      createdAt: r.created_at,
+    };
   }
 
   private assertSelling(round: Round) {

@@ -76,6 +76,7 @@ export class LedgerService {
         idempotencyKey: input.idempotencyKey,
       },
     });
+    const updates: { id: string; after: bigint; amount: bigint }[] = [];
     for (const line of lines) {
       const acc = byId.get(line.accountId);
       if (!acc) throw new Error(`Unknown ledger account ${line.accountId}`);
@@ -87,33 +88,48 @@ export class LedgerService {
         throw new Error(`Posting would make ${acc.code} negative`);
       }
       acc.balance_minor = after;
-      await tx.ledgerAccount.update({ where: { id: acc.id }, data: { balanceMinor: after } });
-      await tx.ledgerEntry.create({
-        data: { transactionId: created.id, accountId: acc.id, amountMinor: line.amountMinor, balanceAfterMinor: after },
-      });
+      updates.push({ id: acc.id, after, amount: line.amountMinor });
     }
+    // One statement for all balances and one for all entries, whatever the number of lines.
+    await tx.$executeRaw`
+      UPDATE ledger_accounts AS a SET balance_minor = v.bal, updated_at = now()
+      FROM (SELECT unnest(${updates.map((u) => u.id)}::uuid[]) AS id, unnest(${updates.map((u) => u.after.toString())}::bigint[]) AS bal) AS v
+      WHERE a.id = v.id`;
+    await tx.ledgerEntry.createMany({
+      data: updates.map((u) => ({ transactionId: created.id, accountId: u.id, amountMinor: u.amount, balanceAfterMinor: u.after })),
+    });
     return created;
   }
 
   /** The player's three accounts, created on first use. */
   async userAccounts(userId: string, tx: Tx): Promise<UserAccounts> {
-    await tx.ledgerAccount.createMany({
-      data: USER_TYPES.map((type) => ({ code: `${type}:${userId}`, type, userId })),
-      skipDuplicates: true,
-    });
-    const rows = await tx.ledgerAccount.findMany({ where: { userId } });
+    let rows = await tx.ledgerAccount.findMany({ where: { userId } });
+    if (rows.length < USER_TYPES.length) {
+      await tx.ledgerAccount.createMany({
+        data: USER_TYPES.map((type) => ({ code: `${type}:${userId}`, type, userId })),
+        skipDuplicates: true,
+      });
+      rows = await tx.ledgerAccount.findMany({ where: { userId } });
+    }
     const get = (t: AccountType) => rows.find((r) => r.type === t)!;
     return { main: get(AccountType.USER_MAIN), play: get(AccountType.USER_PLAY), hold: get(AccountType.USER_WITHDRAW_HOLD) };
   }
 
+  /** System account ids never change, so they are looked up once. Callers use only `id` and `type`. */
+  private readonly systemCache = new Map<AccountType, LedgerAccount>();
+
   async systemAccount(type: AccountType, tx: Tx): Promise<LedgerAccount> {
     if (USER_TYPES.includes(type)) throw new Error(`${type} is a player account`);
+    const cached = this.systemCache.get(type);
+    if (cached) return cached;
     const code = `SYSTEM:${type}`;
     await tx.ledgerAccount.createMany({
       data: [{ code, type, allowNegative: ALLOW_NEGATIVE.includes(type) }],
       skipDuplicates: true,
     });
-    return tx.ledgerAccount.findUniqueOrThrow({ where: { code } });
+    const account = await tx.ledgerAccount.findUniqueOrThrow({ where: { code } });
+    this.systemCache.set(type, account);
+    return account;
   }
 
   /** Every account's balance summed: always 0 when the books are right. */

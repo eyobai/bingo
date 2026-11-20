@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { API_URL, ApiError, api, session, type Balances, type RoomState } from '../api';
+import { API_URL, api, session, type Balances, type RoomState } from '../api';
 
 const layoutCache = new Map<number, number[][]>();
 
@@ -13,7 +13,6 @@ export function useRoom(roomId: string, onWallet: (b: Balances) => void) {
   const [mine, setMine] = useState<number[]>([]);
   const [layouts, setLayouts] = useState<number[][]>([]);
   const [connected, setConnected] = useState(false);
-  const [busy, setBusy] = useState<Set<number>>(new Set());
   /** server clock minus local clock, so countdowns are right even when the phone's clock is wrong. */
   const offset = useRef(0);
   const roundRef = useRef<string | null>(null);
@@ -68,36 +67,63 @@ export function useRoom(roomId: string, onWallet: (b: Balances) => void) {
     });
   }, [pool]);
 
-  const mark = (n: number, on: boolean) =>
-    setBusy((b) => {
-      const next = new Set(b);
-      if (on) next.add(n);
+  /**
+   * Instant feedback: a tapped card turns gold (or back) at once, before the server answers.
+   * `pending` holds what the player asked for and is waiting on; the server's answer replaces it.
+   */
+  const [pending, setPending] = useState<Map<number, 'add' | 'remove'>>(new Map());
+  const inFlight = useRef(0);
+  const stale = useRef(false);
+  const setPendingFor = (n: number, op: 'add' | 'remove' | null) =>
+    setPending((p) => {
+      const next = new Map(p);
+      if (op) next.set(n, op);
       else next.delete(n);
       return next;
     });
 
+  const shown = useMemo(() => {
+    const set = new Set(mine);
+    for (const [n, op] of pending) {
+      if (op === 'add') set.add(n);
+      else set.delete(n);
+    }
+    return [...set].sort((a, b) => a - b);
+  }, [mine, pending]);
+
   /** Takes the card, or gives it back if it is already yours. Throws ApiError for the caller to show. */
   const toggle = useCallback(
     async (cardNo: number) => {
-      if (busy.has(cardNo)) return;
-      mark(cardNo, true);
+      if (pending.has(cardNo)) return;
+      const giveBack = shown.includes(cardNo);
+      setPendingFor(cardNo, giveBack ? 'remove' : 'add');
+      inFlight.current++;
       try {
-        const r = mine.includes(cardNo)
+        const r = giveBack
           ? await api<{ cards: number[] }>(`/rooms/${roomId}/cards/${cardNo}`, { method: 'DELETE' })
           : await api<{ cards: number[] }>(`/rooms/${roomId}/cards`, { body: { cardNos: [cardNo] } });
-        setMine(r.cards);
+        // With several taps in flight the answers can arrive out of order, so an answer is only trusted
+        // when it is the last one; otherwise the list is fetched again once all of them are back.
+        if (inFlight.current === 1) setMine(r.cards);
+        else stale.current = true;
       } catch (e) {
-        if (e instanceof ApiError && e.code === 'CARD_TAKEN') void refreshMine();
+        stale.current = true;
         throw e;
       } finally {
-        mark(cardNo, false);
+        inFlight.current--;
+        setPendingFor(cardNo, null);
+        if (inFlight.current === 0 && stale.current) {
+          stale.current = false;
+          void refreshMine();
+        }
       }
     },
-    [busy, mine, roomId, refreshMine],
+    [pending, shown, roomId, refreshMine],
   );
 
+  const busy = useMemo(() => new Set(pending.keys()), [pending]);
   const now = () => Date.now() + offset.current;
-  return { state, mine, layouts, connected, busy, toggle, now };
+  return { state, mine: shown, layouts, connected, busy, toggle, now };
 }
 
 /** Re-renders every `ms` so countdowns tick. */
