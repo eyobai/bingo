@@ -377,6 +377,13 @@ function ResultView({ state, mine, now }: RoomHook) {
         <>
           <span className="rounded-full bg-gold px-5 py-1.5 text-xs font-black uppercase tracking-[0.25em] text-gold-ink shadow-lg">{t('grandWinner')}</span>
           <p className="font-display text-4xl italic text-gold">BINGO!</p>
+          <div className="flex flex-col items-center gap-1 text-center">
+            <p className="text-xs uppercase tracking-[0.3em] text-gold/80">— {t('winnerIs')} —</p>
+            <p className="font-display text-3xl uppercase">{result.winners[0].name}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted">
+              {t('ticket')} #{result.winners[0].cardNo} · {result.prizePerWinner.birr} ETB
+            </p>
+          </div>
           <div className="w-full max-w-[290px]">
             <BingoCard
               cardNo={result.winners[0].cardNo}
@@ -384,14 +391,8 @@ function ResultView({ state, mine, now }: RoomHook) {
               marked={called}
               winLine={result.winners[0].lineIndex}
               tone="winner"
-              label="Winning ticket"
             />
           </div>
-          <p className="text-xs uppercase tracking-[0.3em] text-gold/80">— {t('winnerIs')} —</p>
-          <p className="font-display text-3xl uppercase">{result.winners[0].name}</p>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted">
-            {t('ticket')} #{result.winners[0].cardNo} · {result.prizePerWinner.birr} ETB
-          </p>
         </>
       ) : (
         <>
@@ -408,20 +409,22 @@ function ResultView({ state, mine, now }: RoomHook) {
               <span>{t('prizePerWinner')}</span>
               <span className="font-display text-xl text-gold">{result.prizePerWinner.birr} ETB</span>
             </div>
-            <ul className="flex flex-col gap-2">
-              {result.winners.map((w) => (
-                <li key={w.cardNo} className={`flex items-center gap-3 rounded-xl border px-3 py-2 ${mine.includes(w.cardNo) ? 'border-gold bg-gold/10' : 'border-line bg-panel-2'}`}>
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold font-black text-gold-ink">{w.name.slice(0, 1).toUpperCase()}</span>
-                  <span className="flex flex-col leading-tight">
-                    <span className="font-bold">{w.name}</span>
-                    <span className="text-[11px] text-gold">
+          </div>
+          <div className={`grid w-full gap-3 ${result.winners.length > 1 ? 'grid-cols-2' : ''}`}>
+            {result.winners.map((w) => (
+              <div key={w.cardNo} className="flex min-w-0 flex-col gap-1.5">
+                <div className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 ${mine.includes(w.cardNo) ? 'border-gold bg-gold/10' : 'border-line bg-panel'}`}>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gold text-sm font-black text-gold-ink">{w.name.slice(0, 1).toUpperCase()}</span>
+                  <span className="min-w-0 leading-tight">
+                    <span className="block truncate text-sm font-bold">{w.name}</span>
+                    <span className="text-[10px] text-gold">
                       {t('ticket')} #{w.cardNo}
                     </span>
                   </span>
-                  <span className="ml-auto h-2 w-2 rounded-full bg-live" />
-                </li>
-              ))}
-            </ul>
+                </div>
+                <BingoCard cardNo={w.cardNo} layout={w.layout} marked={called} winLine={w.lineIndex} tone="winner" compact />
+              </div>
+            ))}
           </div>
         </>
       )}
