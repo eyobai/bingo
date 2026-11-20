@@ -8,6 +8,7 @@ house share). Cards that finish on the same ball share it.
 ```
 backend/   NestJS + PostgreSQL (Prisma) + socket.io + grammY bot
 miniapp/   React + Vite + Tailwind, opened from the bot's "Play" button
+admin/     React + Vite + Tailwind staff dashboard, served at /admin/
 ```
 
 ## Run locally
@@ -110,6 +111,27 @@ that never changes, use a free ngrok static domain or a named Cloudflare tunnel 
    every deposit and withdrawal with Approve / Reject buttons.
 5. Set `TELEBIRR_ACCOUNT` / `TELEBIRR_NAME` (and CBE Birr if used) to the account players pay into.
 
+## Staff dashboard
+
+Build it once (and again after updates): `cd admin && npm install && npm run build`. The server then serves it
+at **`/admin/`** on the same address as the game (through the tunnel: `https://<tunnel>/admin/`). Staff can
+also send `/admin` to the bot to get the link.
+
+Sign-in: enter your Telegram id; the bot sends you a 6-digit code (valid 5 minutes). Only ids in
+`ADMIN_TELEGRAM_IDS` (or accounts already marked staff) get a code. With the bot off, in development, the code
+is written in the server window instead.
+
+| Page | What you do there |
+| --- | --- |
+| Overview | Revenue, stakes, prizes, guarantee top-ups, deposits, withdrawals, players, money owed to players, books check, live room |
+| Deposits | Waiting deposits with the SMS; approve (or approve a corrected amount) or reject with a reason |
+| Withdrawals | Requests to pay; mark paid (with your transaction number) after sending, or reject (money returns) |
+| Players | Search, balances, totals, wallet history; block/unblock; correct a balance with a reason |
+| Rounds | Last 50 rounds: cards, stakes, prize, house share, top-up, winning cards |
+| Game settings | Card price, house share, guaranteed prize, countdown, ball speed, cards per player, card numbers, minimum cards, on/off. Applies from the next round. |
+
+For development with live reload: `npm run dev` in `admin/` (http://localhost:5174/admin/, proxies to :3000).
+
 ## How money moves
 
 All money is whole santim (`BIGINT`), never floating point. Every movement is a ledger transaction whose
@@ -177,7 +199,6 @@ button in the game bar. Without the clips the game is simply silent.
 
 ## Not built yet
 
-- Staff web dashboard (today: bot buttons + the admin API).
 - Automatic deposit check against the Telebirr receipt page instead of manual approval.
 - Daily play streak, weekly cashback and loyalty levels.
 - More than one room in the app (the backend supports many; the app opens `r10`).
