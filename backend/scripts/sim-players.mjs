@@ -107,14 +107,23 @@ async function main() {
   console.log(`Ready. Each of the ${PLAYERS} will pick ${EXACT ? `exactly ${MAX}` : `1–${MAX}`} card(s) in every round of room ${ROOM}. Stop with Ctrl+C.\n`);
 
   let lastRound = null;
+  let offline = false;
   for (;;) {
     let state;
     try {
       state = await call(`/rooms/${ROOM}/state`);
     } catch (e) {
-      console.error(`Room ${ROOM}: ${e.message}`);
+      if (!offline) {
+        offline = true;
+        const reason = e.message === 'fetch failed' ? `cannot reach the server at ${API}` : e.message;
+        console.error(`Room ${ROOM}: ${reason}. Is "npm run start:dev" still running? Retrying every 3 s…`);
+      }
       await sleep(3000);
       continue;
+    }
+    if (offline) {
+      offline = false;
+      console.log('Connected to the server again. Carrying on.\n');
     }
     const { round } = state;
     if (round.status === 'FINISHED' && state.result && lastRound === `${round.id}:play`) {
