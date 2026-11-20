@@ -7,7 +7,9 @@ import { ProfileView } from './ProfileView';
 import { telegram } from './telegram';
 import { WalletView } from './wallet/WalletView';
 
-const DEV_LOGIN = import.meta.env.VITE_DEV_LOGIN === 'true';
+// Browser sign-in for testing: on by default with `npm run dev`, off in builds unless VITE_DEV_LOGIN=true.
+// The server must also allow it (DEV_LOGIN=true, refused in production).
+const DEV_LOGIN = import.meta.env.VITE_DEV_LOGIN === 'true' || (import.meta.env.DEV && import.meta.env.VITE_DEV_LOGIN !== 'false');
 const ROOM_ID = 'r10';
 
 type Boot = { kind: 'loading' } | { kind: 'ready'; user: User } | { kind: 'dev' } | { kind: 'error'; message: string };
