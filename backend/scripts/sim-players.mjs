@@ -9,19 +9,23 @@
  *
  *   node scripts/sim-players.mjs                      10 players, up to 4 cards each
  *   node scripts/sim-players.mjs --players 25 --max 2
+ *   node scripts/sim-players.mjs --players 1 --max 4 --exact      one player with exactly 4 cards
  *
  * Options:
  *   --players N   how many sample players (default 10)
  *   --max N       most cards each one takes per round (default 4)
+ *   --exact       every sample player takes exactly --max cards (default: a random 1..max, like real people)
  *   --room ID     room to play in (default r10)
  *   --admin ID    Telegram id listed in ADMIN_TELEGRAM_IDS, used to approve their test deposits (default 1)
  *   --api URL     backend address (default http://localhost:3000)
  * Stop with Ctrl+C.
  */
 
+const argv = process.argv.slice(2);
 const args = Object.fromEntries(
-  process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]]] : acc), []),
+  argv.reduce((acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]?.startsWith('--') ? 'true' : all[i + 1]]] : acc), []),
 );
+const EXACT = argv.includes('--exact');
 const API = (args.api ?? 'http://localhost:3000').replace(/\/$/, '') + '/api';
 const PLAYERS = Number(args.players ?? 10);
 const MAX = Number(args.max ?? 4);
@@ -100,7 +104,7 @@ async function main() {
     await topUp(token, adminToken, receiverName, i);
     players.push({ name, token, n: i });
   }
-  console.log(`Ready. They will pick 1–${MAX} cards in every round of room ${ROOM}. Stop with Ctrl+C.\n`);
+  console.log(`Ready. Each of the ${PLAYERS} will pick ${EXACT ? `exactly ${MAX}` : `1–${MAX}`} card(s) in every round of room ${ROOM}. Stop with Ctrl+C.\n`);
 
   let lastRound = null;
   for (;;) {
@@ -133,16 +137,16 @@ async function main() {
 async function playRound(players, state, msLeft, adminToken, receiverName) {
   const pool = state.room.cardPool;
   const max = Math.min(MAX, state.room.maxCardsPerPlayer);
-  let bought = 0;
+  const taken = new Map();
   await Promise.all(
     players.map(async (p) => {
       await sleep(rand(300, Math.max(400, (msLeft * 2) / 3)));
-      const want = rand(1, max);
-      for (let tries = 0, got = 0; got < want && tries < want * 4; tries++) {
+      const want = EXACT ? max : rand(1, max);
+      let got = 0;
+      for (let tries = 0; got < want && tries < want * 4; tries++) {
         try {
           await call(`/rooms/${ROOM}/cards`, p.token, { cardNos: [rand(1, pool)] });
           got++;
-          bought++;
         } catch (e) {
           if (e.code === 'INSUFFICIENT_FUNDS') {
             await topUp(p.token, adminToken, receiverName, p.n).catch(() => undefined);
@@ -151,9 +155,12 @@ async function playRound(players, state, msLeft, adminToken, receiverName) {
           }
         }
       }
+      taken.set(p.name, got);
     }),
   );
-  console.log(`Round #${state.round.number}: sample players took ${bought} cards.`);
+  const total = [...taken.values()].reduce((s, n) => s + n, 0);
+  const each = players.map((p) => `${p.name}: ${taken.get(p.name) ?? 0}`).join(', ');
+  console.log(`Round #${state.round.number}: ${players.length} sample player(s), ${total} card(s) in total (${each}).`);
 }
 
 main().catch((e) => {

@@ -46,9 +46,11 @@ A round needs at least 2 players. To play alone on your computer, start sample p
 cd backend
 npm run sim:players                          # 10 players, up to 4 cards each round
 npm run sim:players -- --players 25 --max 2
+npm run sim:players -- --players 1 --max 4 --exact   # one player, exactly 4 cards
 ```
 
-They are named "Test 1", "Test 2"…, get test deposits approved automatically, and pick cards at random in
+Each sample player takes 1 to `--max` cards (at most 4, like a real player; `--exact` makes it exactly `--max`).
+They are named "Test 1", "Test 2"…, get test deposits approved automatically, and pick cards in
 every round until you press Ctrl+C. The script signs in through the developer sign-in, which the server
 refuses unless `DEV_LOGIN=true` (and that is refused in production), so it cannot add players to a real
 game. It needs `ADMIN_TELEGRAM_IDS` to include 1 and `TELEBIRR_ACCOUNT`/`TELEBIRR_NAME` to be set.
