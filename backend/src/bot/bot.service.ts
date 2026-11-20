@@ -57,20 +57,39 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     this.notify.on('withdrawalRequested', (w) => void this.tellStaffWithdrawal(w));
     this.notify.on('withdrawalReviewed', (w) => void this.tellPlayerWithdrawal(w));
 
-    await bot.api.setMyCommands([
-      { command: 'play', description: 'Play bingo / ቢንጎ ይጫወቱ' },
-      { command: 'deposit', description: 'Add money / ገንዘብ ያስገቡ' },
-      { command: 'balance', description: 'My balance / ቀሪ ሂሳብ' },
-      { command: 'withdraw', description: 'Withdraw / ገንዘብ ያውጡ' },
-      { command: 'invite', description: 'Invite friends / ጓደኛ ይጋብዙ' },
-      { command: 'rules', description: 'How to play / ህጎች' },
-    ]);
-    if (this.config.bot.miniAppUrl.startsWith('https://')) {
-      await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Play', web_app: { url: this.config.bot.miniAppUrl } } });
-    }
     bot.catch((e) => this.logger.error(`Update failed: ${e.message}`));
-    // Long polling: no public URL needed. Not awaited: it runs until the app stops.
-    void bot.start({ drop_pending_updates: false, onStart: (me) => this.logger.log(`Bot @${me.username} is running`) });
+    // Never blocks or crashes the game server: if Telegram is unreachable or the token is wrong, it logs
+    // the reason and tries again.
+    void this.connect(bot);
+  }
+
+  private async connect(bot: Bot, attempt = 1): Promise<void> {
+    try {
+      await bot.api.setMyCommands([
+        { command: 'play', description: 'Play bingo / ቢንጎ ይጫወቱ' },
+        { command: 'deposit', description: 'Add money / ገንዘብ ያስገቡ' },
+        { command: 'balance', description: 'My balance / ቀሪ ሂሳብ' },
+        { command: 'withdraw', description: 'Withdraw / ገንዘብ ያውጡ' },
+        { command: 'invite', description: 'Invite friends / ጓደኛ ይጋብዙ' },
+        { command: 'rules', description: 'How to play / ህጎች' },
+      ]);
+      if (this.config.bot.miniAppUrl.startsWith('https://')) {
+        await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Play', web_app: { url: this.config.bot.miniAppUrl } } });
+      } else {
+        this.logger.warn('MINIAPP_URL is not an https address: the Play button is hidden until it is set.');
+      }
+      // Long polling: no public URL needed. Not awaited: it runs until the app stops.
+      void bot
+        .start({ drop_pending_updates: false, onStart: (me) => this.logger.log(`Bot @${me.username} is running`) })
+        .catch((e: Error) => {
+          this.logger.error(`Bot stopped: ${e.message}. Restarting in 30 s.`);
+          setTimeout(() => void this.connect(bot, 1), 30_000);
+        });
+    } catch (e) {
+      const wait = Math.min(300, 15 * attempt);
+      this.logger.error(`Cannot reach Telegram (${(e as Error).message}). Check BOT_TOKEN. Retrying in ${wait} s.`);
+      setTimeout(() => void this.connect(bot, attempt + 1), wait * 1000);
+    }
   }
 
   async onModuleDestroy() {

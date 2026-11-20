@@ -63,35 +63,39 @@ npm run test:e2e                # full rounds against a real database (bingo_tes
 `test:e2e` uses `TEST_DATABASE_URL` (default `postgresql://postgres@localhost:5433/bingo_test?host=/tmp`) and
 refuses to run against a database whose name does not end in `_test`.
 
-## Test inside Telegram from your computer
+## Run the bot from your own computer
 
-The bot uses long polling, so it works from your computer with no public address. The game screen is
-different: Telegram only opens `https` addresses, so you expose the local dev server with a free tunnel.
+The server can run on your computer and serve players through Telegram. The bot connects out to Telegram
+(long polling), so it needs no public address. The game screen needs an `https` address, which a free tunnel
+gives your computer. The server delivers the game screen itself, so there is one program and one tunnel.
 
-1. Create a test bot with [@BotFather](https://t.me/BotFather) and get your Telegram user id from
+1. Create the bot with [@BotFather](https://t.me/BotFather) and get your Telegram user id from
    [@userinfobot](https://t.me/userinfobot).
-2. Start the tunnel (keep it running):
+2. Build the game screen once (and again after every update):
    ```bash
-   cloudflared tunnel --url http://localhost:5173
+   cd miniapp
+   npm run build
    ```
-   It prints an address like `https://something-words.trycloudflare.com`. (`ngrok http 5173` works too.)
-3. In `backend/.env` set:
+3. Start a tunnel to the server's port and keep it running:
+   ```bash
+   cloudflared tunnel --url http://localhost:3000
+   ```
+   It prints an address like `https://something-words.trycloudflare.com`.
+   (Windows: `winget install --id Cloudflare.cloudflared`. `ngrok http 3000` works too.)
+4. In `backend/.env` set:
    ```
    BOT_TOKEN=<token from BotFather>
    BOT_USERNAME=<bot username without @>
    MINIAPP_URL=https://something-words.trycloudflare.com
    ADMIN_TELEGRAM_IDS=<your Telegram user id>
-   TELEBIRR_ACCOUNT=<any number, for testing>
-   TELEBIRR_NAME=<the name that appears in the SMS>
    ```
-   and restart the backend. The log shows `Bot @yourbot is running`.
-4. Open your bot in Telegram, send `/start`, tap **Play now**. The game opens inside Telegram and signs you
-   in automatically.
-5. To test a full round you need 2 players: ask a friend to `/start` the bot, or join from the browser with
-   the developer sign-in (http://localhost:5173, any id other than yours).
+5. Start the server (`npm run start:dev` in `backend`). The log shows `Serving the Mini App` and
+   `Bot @yourbot is running`.
+6. In Telegram send `/start` to your bot and tap **Play now**.
 
-The tunnel address changes every time you restart `cloudflared`; update `MINIAPP_URL` and restart the
-backend when it does.
+Players can use it while your computer, the server and the tunnel are running. A quick tunnel gets a new
+address every time it starts: update `MINIAPP_URL` and restart the server when that happens. For an address
+that never changes, use a free ngrok static domain or a named Cloudflare tunnel on your own domain.
 
 ## Going live with Telegram
 
