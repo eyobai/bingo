@@ -127,7 +127,7 @@ function SignIn({ onDone }: { onDone: () => void }) {
         ok: true,
         text:
           r.via === 'server-log'
-            ? 'The bot is off, so the code was written in the server window.'
+            ? 'The bot could not message this id (it is a test account, or never opened the bot), so the code is in the server window.'
             : 'If this id is staff, the bot has sent you a 6-digit code in Telegram.',
       });
     } catch (err) {

@@ -62,10 +62,14 @@ export class StaffAuthService {
     );
     if (delivered) return { sent: true, via: 'telegram' };
     if (this.config.env !== 'production') {
-      this.logger.warn(`Bot is off, so here is the dashboard code for ${telegramId}: ${code}`);
+      this.logger.warn(`The bot could not message ${telegramId} (bot off, or that account never opened the bot), so here is the dashboard code: ${code}`);
       return { sent: true, via: 'server-log' };
     }
-    throw new AppError(HttpStatus.SERVICE_UNAVAILABLE, 'BOT_OFF', 'The bot could not send the code. Check that it is running.');
+    throw new AppError(
+      HttpStatus.SERVICE_UNAVAILABLE,
+      'BOT_OFF',
+      'The bot could not send the code. Open the bot in Telegram, press Start, then try again.',
+    );
   }
 
   async verify(telegramId: string, code: string) {

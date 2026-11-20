@@ -274,8 +274,25 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     try {
       await this.bot?.api.sendMessage(chatId.toString(), text, extra);
     } catch (e) {
-      this.logger.warn(`Message to ${chatId} failed: ${(e as Error).message}`);
+      this.sendFailed(chatId.toString(), e as Error);
     }
+  }
+
+  private readonly unreachable = new Set<string>();
+  /**
+   * A bot can only message people who have pressed Start in it. Test accounts (staff id 1, sample players
+   * 900001…) are not real Telegram users, so this always fails for them; say so once per account.
+   */
+  private sendFailed(chatId: string, e: Error) {
+    if (/chat not found|bot was blocked|user is deactivated/i.test(e.message)) {
+      if (this.unreachable.has(chatId)) return;
+      this.unreachable.add(chatId);
+      this.logger.log(
+        `Cannot message Telegram id ${chatId}: that account has not opened the bot (or blocked it). Normal for test accounts; not repeated.`,
+      );
+      return;
+    }
+    this.logger.warn(`Message to ${chatId} failed: ${e.message}`);
   }
 
   /** Sends an HTML message to one person. False when the bot is off or Telegram refused it. */
@@ -285,7 +302,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       await this.bot.api.sendMessage(chatId, html, { parse_mode: 'HTML' });
       return true;
     } catch (e) {
-      this.logger.warn(`Message to ${chatId} failed: ${(e as Error).message}`);
+      this.sendFailed(chatId, e as Error);
       return false;
     }
   }
