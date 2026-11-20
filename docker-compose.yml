@@ -1,4 +1,6 @@
 # Local database for development: `docker compose up -d`
+# Listens on localhost:55432 (uncommon, so it does not clash with another PostgreSQL).
+# Another port: set BINGO_DB_PORT, e.g. `$env:BINGO_DB_PORT=55433; docker compose up -d` in PowerShell.
 services:
   db:
     image: postgres:16
@@ -7,7 +9,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: bingo
     ports:
-      - '5433:5432'
+      - '${BINGO_DB_PORT:-55432}:5432'
     volumes:
       - bingo-db:/var/lib/postgresql/data
 volumes:
