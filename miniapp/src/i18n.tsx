@@ -1,0 +1,203 @@
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+
+export type Lang = 'am' | 'en';
+
+const en = {
+  playWallet: 'Play wallet',
+  mainWallet: 'Main wallet',
+  events: 'Events',
+  eventsTitle: 'Coming soon',
+  eventsBody: 'Stay tuned for big bonuses!',
+  jackpot: 'Jackpot',
+  startingIn: 'Starting in',
+  selectCards: 'Select your cards',
+  yourCards: 'Your cards',
+  tapToPick: 'Tap a number to take that card. Tap it again to give it back before the countdown ends.',
+  noCardsYet: 'No cards yet. Pick up to {max} numbers above.',
+  gameRound: 'Game round',
+  live: 'Live',
+  players: 'players',
+  cards: 'cards',
+  prizePool: 'Prize pool',
+  trackNumbers: 'Track numbers',
+  auto: 'Auto',
+  manual: 'Manual',
+  autoHelp: 'Your cards are marked for you.',
+  manualHelp: 'Tap called numbers to mark them. Wins are found automatically either way.',
+  roundInProgress: 'Round in progress…',
+  waitNext: 'Please wait for the next round!',
+  grandWinner: 'Grand winner',
+  winners: 'winners',
+  winnerIs: 'The winner is',
+  ticket: 'Ticket',
+  totalWinners: 'Total winners',
+  prizePerWinner: 'Prize per winner',
+  nextRoundIn: 'Next round in {s}s',
+  youWon: 'You won {amount} ETB!',
+  notEnough: 'Not enough players this round',
+  refunded: 'Your cards were refunded. A new round is starting.',
+  needMoney: 'Not enough money. Add money to keep playing.',
+  addMoney: 'Add money',
+  game: 'Game',
+  wallet: 'Wallet',
+  profile: 'Profile',
+  total: 'Total balance',
+  pendingWithdrawal: 'Being paid out',
+  deposit: 'Deposit',
+  withdraw: 'Withdraw',
+  history: 'History',
+  depositHow: 'Send money to the account below, then paste the whole confirmation SMS here.',
+  account: 'Account',
+  name: 'Name',
+  minimum: 'Minimum',
+  pasteSms: 'Paste the SMS here',
+  submit: 'Submit',
+  depositSent: 'Received. We are checking your payment; you will get a message in the bot when it is added.',
+  firstBonus: 'First deposit bonus: {p}%',
+  withdrawTo: 'Send to',
+  phoneNumber: 'Phone number',
+  accountName: 'Account name',
+  amountBirr: 'Amount (birr)',
+  withdrawSent: 'Request sent. Staff will send the money and you will get a message in the bot.',
+  noHistory: 'Nothing here yet.',
+  inviteTitle: 'Invite friends',
+  inviteBody: 'Share your link. When a friend makes a first deposit, you get a bonus.',
+  share: 'Share link',
+  invited: 'Friends joined',
+  memberSince: 'Member since',
+  myGames: 'My games',
+  won: 'Won',
+  lost: 'Lost',
+  cancelledShort: 'Refunded',
+  rules: 'How to play',
+  rulesBody:
+    'Pick up to 4 cards before the countdown ends. Balls 1–75 are called one by one (B 1–15, I 16–30, N 31–45, G 46–60, O 61–75). The first card to complete a row, column or diagonal wins; the ★ is free. Cards that finish on the same ball share the prize.',
+  fair: 'Fair play',
+  fairBody: 'The order of the balls is fixed before any card is sold. Its fingerprint:',
+  pending: 'Checking',
+  approved: 'Added',
+  rejected: 'Rejected',
+  paid: 'Paid',
+  signInDev: 'Developer sign-in',
+  telegramOnly: 'Open this game from the Telegram bot.',
+  retry: 'Try again',
+  close: 'Close',
+} as const;
+
+type Dict = Record<keyof typeof en, string>;
+
+const am: Dict = {
+  playWallet: 'መጫወቻ ሂሳብ',
+  mainWallet: 'ዋና ሂሳብ',
+  events: 'ዝግጅቶች',
+  eventsTitle: 'በቅርቡ',
+  eventsBody: 'ለትልቅ ቦነሶች ይጠብቁ!',
+  jackpot: 'ደራሽ',
+  startingIn: 'ጨዋታው ሊጀምር ነው',
+  selectCards: 'ካርቴላ ይምረጡ',
+  yourCards: 'የእርስዎ ካርቴላዎች',
+  tapToPick: 'ካርቴላ ለመውሰድ ቁጥር ይጫኑ። ለመመለስ ሰዓቱ ሳያልቅ እንደገና ይጫኑ።',
+  noCardsYet: 'እስካሁን ካርቴላ የለዎትም። እስከ {max} ቁጥሮች ይምረጡ።',
+  gameRound: 'ዙር',
+  live: 'ቀጥታ',
+  players: 'ተጫዋቾች',
+  cards: 'ካርቴላ',
+  prizePool: 'ደራሽ',
+  trackNumbers: 'የተጠሩ ቁጥሮች',
+  auto: 'አውቶ',
+  manual: 'በእጅ',
+  autoHelp: 'ካርቴላዎ በራሱ ይመረጣል።',
+  manualHelp: 'የተጠሩትን ቁጥሮች ይጫኑ። አሸናፊ በራሱ ይገኛል።',
+  roundInProgress: 'ጨዋታ እየተካሄደ ነው…',
+  waitNext: 'እባክዎ ቀጣዩን ዙር ይጠብቁ!',
+  grandWinner: 'ታላቅ አሸናፊ',
+  winners: 'አሸናፊዎች',
+  winnerIs: 'አሸናፊው',
+  ticket: 'ካርቴላ',
+  totalWinners: 'ጠቅላላ አሸናፊዎች',
+  prizePerWinner: 'ለእያንዳንዱ',
+  nextRoundIn: 'ቀጣይ ዙር በ{s} ሰከንድ',
+  youWon: '{amount} ብር አሸንፈዋል!',
+  notEnough: 'በዚህ ዙር በቂ ተጫዋች የለም',
+  refunded: 'ገንዘብዎ ተመልሷል። አዲስ ዙር እየጀመረ ነው።',
+  needMoney: 'በቂ ሂሳብ የለዎትም። ለመቀጠል ገንዘብ ያስገቡ።',
+  addMoney: 'ገንዘብ ያስገቡ',
+  game: 'ጨዋታ',
+  wallet: 'ሂሳብ',
+  profile: 'መገለጫ',
+  total: 'ጠቅላላ ሂሳብ',
+  pendingWithdrawal: 'በመክፈል ላይ',
+  deposit: 'ገንዘብ ማስገቢያ',
+  withdraw: 'ገንዘብ ማውጫ',
+  history: 'ታሪክ',
+  depositHow: 'ገንዘቡን ወደታች ወዳለው አካውንት ይላኩ፤ ከዚያ ሙሉውን የማረጋገጫ መልዕክት እዚህ ይለጥፉ።',
+  account: 'አካውንት',
+  name: 'ስም',
+  minimum: 'ዝቅተኛ',
+  pasteSms: 'መልዕክቱን እዚህ ይለጥፉ',
+  submit: 'ላክ',
+  depositSent: 'ደርሶናል። ክፍያዎ እየተረጋገጠ ነው፤ ሲገባ በቦቱ መልዕክት ይደርስዎታል።',
+  firstBonus: 'የመጀመሪያ ማስገቢያ ቦነስ፦ {p}%',
+  withdrawTo: 'ወደ',
+  phoneNumber: 'ስልክ ቁጥር',
+  accountName: 'የአካውንት ስም',
+  amountBirr: 'መጠን (ብር)',
+  withdrawSent: 'ጥያቄዎ ደርሷል። ገንዘቡ ሲላክ በቦቱ መልዕክት ይደርስዎታል።',
+  noHistory: 'እስካሁን ምንም የለም።',
+  inviteTitle: 'ጓደኛ ይጋብዙ',
+  inviteBody: 'ሊንክዎን ያጋሩ። ጓደኛዎ መጀመሪያ ገንዘብ ሲያስገባ ቦነስ ያገኛሉ።',
+  share: 'ሊንክ አጋራ',
+  invited: 'የተቀላቀሉ ጓደኞች',
+  memberSince: 'አባል ከሆኑ',
+  myGames: 'የእኔ ጨዋታዎች',
+  won: 'አሸነፈ',
+  lost: 'ተሸነፈ',
+  cancelledShort: 'ተመልሷል',
+  rules: 'እንዴት ይጫወታሉ',
+  rulesBody:
+    'ሰዓቱ ሳያልቅ እስከ 4 ካርቴላ ይምረጡ። ከ1 እስከ 75 ያሉ ኳሶች አንድ በአንድ ይጠራሉ (B 1–15፣ I 16–30፣ N 31–45፣ G 46–60፣ O 61–75)። መጀመሪያ ረድፍ፣ አምድ ወይም ሰያፍ የሞላ ካርቴላ ያሸንፋል፤ መሃል ያለው ★ ነፃ ነው። በአንድ ኳስ የሞሉ ካርቴላዎች ደራሹን ይካፈላሉ።',
+  fair: 'ፍትሃዊ ጨዋታ',
+  fairBody: 'የኳሶቹ ቅደም ተከተል ካርቴላ ከመሸጡ በፊት ተወስኗል። መለያው፦',
+  pending: 'በማረጋገጥ ላይ',
+  approved: 'ገብቷል',
+  rejected: 'ውድቅ',
+  paid: 'ተከፍሏል',
+  signInDev: 'የገንቢ መግቢያ',
+  telegramOnly: 'ይህን ጨዋታ ከቴሌግራም ቦቱ ይክፈቱ።',
+  retry: 'እንደገና ይሞክሩ',
+  close: 'ዝጋ',
+};
+
+export type Key = keyof typeof en;
+const dicts: Record<Lang, Dict> = { en, am };
+
+interface I18n {
+  lang: Lang;
+  setLang(l: Lang): void;
+  t(key: Key, vars?: Record<string, string | number>): string;
+}
+
+const Ctx = createContext<I18n | null>(null);
+
+export function I18nProvider({ initial, children }: { initial: Lang; children: ReactNode }) {
+  const [lang, setLang] = useState<Lang>(initial);
+  const value = useMemo<I18n>(
+    () => ({
+      lang,
+      setLang,
+      t: (key, vars) => {
+        let s = dicts[lang][key] ?? en[key];
+        if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, String(v));
+        return s;
+      },
+    }),
+    [lang],
+  );
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useI18n(): I18n {
+  const v = useContext(Ctx);
+  if (!v) throw new Error('useI18n outside provider');
+  return v;
+}

@@ -1,0 +1,109 @@
+@import 'tailwindcss';
+@import '@fontsource/archivo-black/400.css';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/noto-sans-ethiopic';
+
+/* A bingo hall at night: deep navy table, gold balls, coloured B-I-N-G-O columns.
+   Taken cards are dim purple so they read as "gone" without competing with your own (gold) cards. */
+@theme {
+  --color-bg: #0b1120;
+  --color-panel: #111a2c;
+  --color-panel-2: #172238;
+  --color-line: #24304a;
+  --color-ink: #e8edf6;
+  --color-muted: #8a97b0;
+  --color-gold: #f6b93b;
+  --color-gold-deep: #c98a12;
+  --color-gold-ink: #241600;
+  --color-taken: #2b2447;
+  --color-taken-ink: #5f5490;
+  --color-live: #22c55e;
+  --color-win: #19b45a;
+  --color-danger: #f0645a;
+  --color-ball-b: #3b82f6;
+  --color-ball-i: #ef4444;
+  --color-ball-n: #a1a1aa;
+  --color-ball-g: #22c55e;
+  --color-ball-o: #f59e0b;
+
+  --font-display: 'Archivo Black', 'Noto Sans Ethiopic Variable', system-ui, sans-serif;
+  --font-sans: 'Inter Variable', 'Noto Sans Ethiopic Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+/* The gold jackpot balls and the big called ball. */
+.ball-gold {
+  background: radial-gradient(circle at 35% 30%, #fff6d6 0%, #ffd56a 35%, #f0a915 70%, #b97800 100%);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.45), inset 0 -2px 3px rgb(0 0 0 / 0.2);
+  color: #3a2500;
+}
+.ball-white {
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #eef1f6 45%, #c9d0dc 100%);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.5), inset 0 -4px 8px rgb(0 0 0 / 0.15);
+  color: #111827;
+}
+.jackpot {
+  background: linear-gradient(180deg, #121b30 0%, #0d1526 100%);
+  box-shadow: inset 0 0 0 2px var(--color-gold), 0 0 24px rgb(246 185 59 / 0.15);
+}
+.winner-glow {
+  background: radial-gradient(ellipse at 50% 30%, rgb(246 185 59 / 0.22), transparent 60%);
+}
+
+@keyframes pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0.2;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.pop {
+  animation: pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+.floaty {
+  animation: floaty 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop,
+  .floaty {
+    animation: none;
+  }
+}
