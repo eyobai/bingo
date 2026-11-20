@@ -76,6 +76,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       ]);
       if (this.config.bot.miniAppUrl.startsWith('https://')) {
         await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Play', web_app: { url: this.config.bot.miniAppUrl } } });
+        this.logger.log(`Play button opens ${this.config.bot.miniAppUrl}`);
       } else {
         this.logger.warn('MINIAPP_URL is not an https address: the Play button is hidden until it is set.');
       }
