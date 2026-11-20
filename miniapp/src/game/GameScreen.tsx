@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, type Balances, type RoomState } from '../api';
 import { useI18n } from '../i18n';
 import { telegram } from '../telegram';
+import { useCaller, useSoundSetting } from './caller';
 import { BallChip, BigBall, BingoCard, GoldBall, LETTERS, colorOf } from './parts';
 import { useRoom, useTick } from './useRoom';
 
@@ -16,6 +17,7 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
   const room = useRoom(roomId, onWallet);
   const { state } = room;
   useTick(250);
+  useCaller(state?.round.id ?? '', state?.round.status ?? '', state?.round.calls ?? NO_CALLS);
 
   if (!state) {
     return <div className="flex h-64 items-center justify-center text-muted">…</div>;
@@ -28,6 +30,7 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
 }
 
 type RoomHook = ReturnType<typeof useRoom> & { state: RoomState };
+const NO_CALLS: number[] = [];
 
 const DECOR = [
   { n: 27, x: 8, y: 4 },
@@ -173,10 +176,33 @@ function RoundBar({ state }: { state: RoomState }) {
       <span className="rounded-full bg-white px-2 py-0.5">
         <span className="text-gold-deep">●</span> {t('gameRound')} #{state.round.number}
       </span>
-      <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
-        ● {t('live')} · {state.round.players} {t('players')}
+      <span className="flex items-center gap-1.5">
+        <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
+          ● {t('live')} · {state.round.players} {t('players')}
+        </span>
+        <SoundButton />
       </span>
     </div>
+  );
+}
+
+/** Turns the Amharic ball announcements on or off (remembered on this phone). */
+function SoundButton() {
+  const { t } = useI18n();
+  const [on, setOn] = useSoundSetting();
+  return (
+    <button
+      type="button"
+      onClick={() => setOn(!on)}
+      aria-pressed={on}
+      aria-label={on ? t('soundOff') : t('soundOn')}
+      className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-gray-700"
+    >
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M11 5 6 9H3v6h3l5 4V5z" fill="currentColor" />
+        {on ? <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /> : <path d="m16 9 6 6m0-6-6 6" />}
+      </svg>
+    </button>
   );
 }
 

@@ -164,6 +164,13 @@ or tap **Reject** and it returns to the wallet. One pending withdrawal per playe
 Live updates: socket.io at `/socket.io`. Connect with `auth: { token }`, emit `join { roomId }`, receive
 `state` (room, round, taken cards, calls, result) and `wallet` (your balances).
 
+## Ball announcements (sound)
+
+Each called ball is announced in Amharic ("ቢ አምስት" for B5) from 75 short MP3 clips in
+`miniapp/public/sounds/am/`. Make them with Azure's Amharic male voice, or record your own; see
+[miniapp/public/sounds/am/README.md](miniapp/public/sounds/am/README.md). Players can mute it with the speaker
+button in the game bar. Without the clips the game is simply silent.
+
 ## Not built yet
 
 - Staff web dashboard (today: bot buttons + the admin API).

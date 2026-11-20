@@ -82,6 +82,8 @@ const en = {
   telegramOnly: 'Open this game from the Telegram bot.',
   retry: 'Try again',
   close: 'Close',
+  soundOn: 'Turn sound on',
+  soundOff: 'Turn sound off',
 } as const;
 
 type Dict = Record<keyof typeof en, string>;
@@ -166,6 +168,8 @@ const am: Dict = {
   telegramOnly: 'ይህን ጨዋታ ከቴሌግራም ቦቱ ይክፈቱ።',
   retry: 'እንደገና ይሞክሩ',
   close: 'ዝጋ',
+  soundOn: 'ድምፅ አብራ',
+  soundOff: 'ድምፅ አጥፋ',
 };
 
 export type Key = keyof typeof en;
