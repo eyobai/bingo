@@ -46,7 +46,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
 
   async onApplicationBootstrap() {
     if (!this.config.bot.token || this.config.env === 'test') {
-      this.logger.warn('BOT_TOKEN not set: Telegram bot is off.');
+      this.logger.warn('BOT_TOKEN is empty: the Telegram bot is OFF. Set it in backend/.env and restart.');
       return;
     }
     const bot = new Bot(this.config.bot.token);
@@ -60,6 +60,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     bot.catch((e) => this.logger.error(`Update failed: ${e.message}`));
     // Never blocks or crashes the game server: if Telegram is unreachable or the token is wrong, it logs
     // the reason and tries again.
+    this.logger.log('Connecting the bot to Telegram…');
     void this.connect(bot);
   }
 

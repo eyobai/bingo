@@ -1,4 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminController } from './admin.controller';
@@ -16,12 +18,27 @@ import { PrismaModule } from './prisma.service';
 import { UsersService } from './users/users.service';
 import { WalletService } from './wallet/wallet.service';
 
+/** A setting written twice in .env silently uses the last one; say so, since it has bitten us before. */
+function warnDuplicateSettings(file = join(process.cwd(), '.env')) {
+  if (!existsSync(file)) return;
+  const seen = new Map<string, number>();
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const m = /^\s*([A-Z0-9_]+)\s*=/.exec(line);
+    if (m) seen.set(m[1], (seen.get(m[1]) ?? 0) + 1);
+  }
+  const twice = [...seen].filter(([, n]) => n > 1).map(([k]) => k);
+  if (twice.length) {
+    new Logger('Settings').warn(`.env sets ${twice.join(', ')} more than once; only the LAST line of each counts. Delete the extra lines.`);
+  }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const { error, value } = envSchema.validate(env, { allowUnknown: true, abortEarly: false });
   if (error) throw new Error(`Invalid settings: ${error.message}`);
   return buildConfig(value);
 }
 
+warnDuplicateSettings();
 const config = loadConfig();
 
 @Module({
