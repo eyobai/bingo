@@ -1,0 +1,295 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Players ────────────────────────────────────────────────────────────────
+
+enum Role {
+  PLAYER
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  /// Telegram user id. Players sign in through Telegram only.
+  telegramId   BigInt   @unique @map("telegram_id")
+  username     String?  @db.VarChar(64)
+  firstName    String   @map("first_name") @db.VarChar(128)
+  lastName     String?  @map("last_name") @db.VarChar(128)
+  language     String   @default("am") @db.VarChar(5)
+  phone        String?  @db.VarChar(20)
+  role         Role     @default(PLAYER)
+  isBlocked    Boolean  @default(false) @map("is_blocked")
+  /// Code other people put in their invite link (t.me/<bot>?start=<code>).
+  referralCode String   @unique @map("referral_code") @db.VarChar(16)
+  referredById String?  @map("referred_by_id") @db.Uuid
+  /// Set once the referral reward for this user's first deposit has been paid.
+  referralPaid Boolean  @default(false) @map("referral_paid")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  referredBy  User?           @relation("Referrals", fields: [referredById], references: [id])
+  referrals   User[]          @relation("Referrals")
+  accounts    LedgerAccount[]
+  cards       Card[]
+  winnings    Winner[]
+  deposits    Deposit[]       @relation("DepositUser")
+  withdrawals Withdrawal[]    @relation("WithdrawalUser")
+
+  @@map("users")
+}
+
+// ─── Ledger ─────────────────────────────────────────────────────────────────
+// Every money movement is one LedgerTransaction whose entries sum to zero.
+// Balances are cached on LedgerAccount and changed in the same database transaction.
+
+enum AccountType {
+  /// Player's real money: deposits and winnings. Withdrawable.
+  USER_MAIN
+  /// Player's bonus money: can buy cards, cannot be withdrawn.
+  USER_PLAY
+  /// Player's money waiting for a withdrawal to be paid out.
+  USER_WITHDRAW_HOLD
+  /// Stakes of rounds that are still running.
+  GAME_POT
+  /// The platform's earnings (house cut).
+  HOUSE_REVENUE
+  /// What bonuses and guaranteed-prize top-ups cost the platform. Goes negative.
+  PROMOTIONS
+  /// Money that entered or left through Telebirr and other methods. Goes negative as deposits arrive.
+  PAYMENT_CLEARING
+  /// Manual corrections by staff. May go negative.
+  ADJUSTMENTS
+}
+
+model LedgerAccount {
+  id            String      @id @default(uuid()) @db.Uuid
+  code          String      @unique @db.VarChar(80)
+  type          AccountType
+  userId        String?     @map("user_id") @db.Uuid
+  allowNegative Boolean     @default(false) @map("allow_negative")
+  balanceMinor  BigInt      @default(0) @map("balance_minor")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user    User?         @relation(fields: [userId], references: [id])
+  entries LedgerEntry[]
+
+  @@unique([userId, type])
+  @@map("ledger_accounts")
+}
+
+enum TxType {
+  DEPOSIT
+  BONUS
+  CARD_PURCHASE
+  CARD_REFUND
+  ROUND_SETTLEMENT
+  WITHDRAWAL_HOLD
+  WITHDRAWAL_RELEASE
+  WITHDRAWAL_PAYOUT
+  ADJUSTMENT
+}
+
+model LedgerTransaction {
+  id             String   @id @default(uuid()) @db.Uuid
+  type           TxType
+  description    String   @db.VarChar(255)
+  metadata       Json?
+  /// Posting again with the same key returns the first transaction instead of moving money twice.
+  idempotencyKey String?  @unique @map("idempotency_key") @db.VarChar(120)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  entries LedgerEntry[]
+
+  @@map("ledger_transactions")
+}
+
+model LedgerEntry {
+  id                String   @id @default(uuid()) @db.Uuid
+  sequence          BigInt   @unique @default(autoincrement())
+  transactionId     String   @map("transaction_id") @db.Uuid
+  accountId         String   @map("account_id") @db.Uuid
+  /// Signed: positive adds to the account balance, negative takes from it.
+  amountMinor       BigInt   @map("amount_minor")
+  balanceAfterMinor BigInt   @map("balance_after_minor")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  transaction LedgerTransaction @relation(fields: [transactionId], references: [id])
+  account     LedgerAccount     @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, sequence])
+  @@index([transactionId])
+  @@map("ledger_entries")
+}
+
+// ─── Payments ───────────────────────────────────────────────────────────────
+
+enum PaymentMethod {
+  TELEBIRR
+  CBE_BIRR
+}
+
+enum DepositStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Deposit {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  method       PaymentMethod
+  amountMinor  BigInt        @map("amount_minor")
+  /// Transaction number from the payment SMS, upper-cased. Unique, so one payment can only be claimed once.
+  txRef        String        @unique @map("tx_ref") @db.VarChar(40)
+  smsText      String        @map("sms_text") @db.VarChar(2000)
+  status       DepositStatus @default(PENDING)
+  bonusMinor   BigInt        @default(0) @map("bonus_minor")
+  reviewedById String?       @map("reviewed_by_id") @db.Uuid
+  reviewedAt   DateTime?     @map("reviewed_at") @db.Timestamptz(3)
+  note         String?       @db.VarChar(255)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation("DepositUser", fields: [userId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@map("deposits")
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PAID
+  REJECTED
+}
+
+model Withdrawal {
+  id            String           @id @default(uuid()) @db.Uuid
+  userId        String           @map("user_id") @db.Uuid
+  method        PaymentMethod
+  accountNumber String           @map("account_number") @db.VarChar(40)
+  accountName   String           @map("account_name") @db.VarChar(120)
+  amountMinor   BigInt           @map("amount_minor")
+  status        WithdrawalStatus @default(PENDING)
+  reviewedById  String?          @map("reviewed_by_id") @db.Uuid
+  reviewedAt    DateTime?        @map("reviewed_at") @db.Timestamptz(3)
+  payoutRef     String?          @map("payout_ref") @db.VarChar(60)
+  note          String?          @db.VarChar(255)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation("WithdrawalUser", fields: [userId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@map("withdrawals")
+}
+
+// ─── Bingo ──────────────────────────────────────────────────────────────────
+
+model Room {
+  id                   String   @id @db.VarChar(32)
+  name                 String   @db.VarChar(60)
+  stakeMinor           BigInt   @map("stake_minor")
+  /// How many numbered cards players can choose from (cards 1..cardPool).
+  cardPool             Int      @map("card_pool")
+  maxCardsPerPlayer    Int      @default(4) @map("max_cards_per_player")
+  selectSeconds        Int      @default(60) @map("select_seconds")
+  callIntervalMs       Int      @default(3000) @map("call_interval_ms")
+  /// House cut in basis points: 2000 = 20%.
+  houseCutBps          Int      @default(2000) @map("house_cut_bps")
+  /// A round with fewer cards than this is cancelled and every card refunded.
+  minCards             Int      @default(2) @map("min_cards")
+  /// The prize is never lower than this. The platform adds the difference (PROMOTIONS). 0 = off.
+  guaranteedPrizeMinor BigInt   @default(0) @map("guaranteed_prize_minor")
+  isActive             Boolean  @default(true) @map("is_active")
+  sortOrder            Int      @default(0) @map("sort_order")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  rounds Round[]
+
+  @@map("rooms")
+}
+
+enum RoundStatus {
+  SELECTING
+  DRAWING
+  FINISHED
+  CANCELLED
+}
+
+model Round {
+  id               String      @id @default(uuid()) @db.Uuid
+  /// Public round number shown to players (#257522).
+  number           Int         @unique @default(autoincrement())
+  roomId           String      @map("room_id") @db.VarChar(32)
+  status           RoundStatus @default(SELECTING)
+  stakeMinor       BigInt      @map("stake_minor")
+  houseCutBps      Int         @map("house_cut_bps")
+  guaranteedMinor  BigInt      @default(0) @map("guaranteed_minor")
+  /// Secret that decides the ball order. Only its SHA-256 is shown until the round ends.
+  serverSeed       String      @map("server_seed") @db.Char(64)
+  seedHash         String      @map("seed_hash") @db.Char(64)
+  selectEndsAt     DateTime    @map("select_ends_at") @db.Timestamptz(3)
+  startedAt        DateTime?   @map("started_at") @db.Timestamptz(3)
+  finishedAt       DateTime?   @map("finished_at") @db.Timestamptz(3)
+  /// Balls called so far, in order.
+  calls            Int[]       @default([])
+  cardsSold        Int         @default(0) @map("cards_sold")
+  stakeTotalMinor  BigInt      @default(0) @map("stake_total_minor")
+  prizeMinor       BigInt      @default(0) @map("prize_minor")
+  houseCutMinor    BigInt      @default(0) @map("house_cut_minor")
+  topUpMinor       BigInt      @default(0) @map("top_up_minor")
+  prizePerWinnerMinor BigInt   @default(0) @map("prize_per_winner_minor")
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  room    Room     @relation(fields: [roomId], references: [id])
+  cards   Card[]
+  winners Winner[]
+
+  @@index([roomId, createdAt])
+  @@index([status])
+  @@map("rounds")
+}
+
+model Card {
+  id            String   @id @default(uuid()) @db.Uuid
+  roundId       String   @map("round_id") @db.Uuid
+  cardNo        Int      @map("card_no")
+  userId        String   @map("user_id") @db.Uuid
+  paidPlayMinor BigInt   @map("paid_play_minor")
+  paidMainMinor BigInt   @map("paid_main_minor")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  round Round @relation(fields: [roundId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  /// One owner per card number per round: this is what makes "taken" cards impossible to buy twice.
+  @@unique([roundId, cardNo])
+  @@index([userId, createdAt])
+  @@map("cards")
+}
+
+model Winner {
+  id         String   @id @default(uuid()) @db.Uuid
+  roundId    String   @map("round_id") @db.Uuid
+  cardNo     Int      @map("card_no")
+  userId     String   @map("user_id") @db.Uuid
+  /// Index of the winning line: 0-4 rows, 5-9 columns B-O, 10 main diagonal, 11 other diagonal.
+  lineIndex  Int      @map("line_index")
+  prizeMinor BigInt   @map("prize_minor")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  round Round @relation(fields: [roundId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([roundId, cardNo])
+  @@index([userId, createdAt])
+  @@map("winners")
+}
