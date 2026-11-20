@@ -127,6 +127,13 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       await ctx.reply('Open the game to play bingo: / ቢንጎ ለመጫወት ይክፈቱ፦', { reply_markup: this.playKeyboard() });
     });
 
+    // Shows the sender's Telegram id: put it in ADMIN_TELEGRAM_IDS to become staff.
+    bot.command('myid', (ctx) =>
+      ctx.reply(`Your Telegram id: <code>${ctx.from?.id ?? '?'}</code>\nStaff: put it in ADMIN_TELEGRAM_IDS in backend/.env and restart the server.`, {
+        parse_mode: 'HTML',
+      }),
+    );
+
     bot.command(['rules', 'help', 'instructions'], (ctx) => ctx.reply(RULES, { parse_mode: 'HTML', reply_markup: this.playKeyboard() }));
 
     bot.command('balance', async (ctx) => {
