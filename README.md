@@ -37,6 +37,21 @@ Outside Telegram the app shows a developer sign-in (only when `DEV_LOGIN=true` o
 `VITE_DEV_LOGIN=true` in the app). Each Telegram id is a separate player; ids listed in
 `ADMIN_TELEGRAM_IDS` are staff.
 
+### Sample players (local testing only)
+
+A round needs at least 2 players. To play alone on your computer, start sample players in another terminal:
+
+```bash
+cd backend
+npm run sim:players                          # 10 players, up to 4 cards each round
+npm run sim:players -- --players 25 --max 2
+```
+
+They are named "Test 1", "Test 2"…, get test deposits approved automatically, and pick cards at random in
+every round until you press Ctrl+C. The script signs in through the developer sign-in, which the server
+refuses unless `DEV_LOGIN=true` (and that is refused in production), so it cannot add players to a real
+game. It needs `ADMIN_TELEGRAM_IDS` to include 1 and `TELEBIRR_ACCOUNT`/`TELEBIRR_NAME` to be set.
+
 Tests:
 
 ```bash
