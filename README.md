@@ -12,11 +12,15 @@ miniapp/   React + Vite + Tailwind, opened from the bot's "Play" button
 
 ## Run locally
 
-Needs Node.js 22 and PostgreSQL 16.
+Needs Node.js 22 and PostgreSQL 16. The easiest way to get the database is Docker:
+
+```bash
+docker compose up -d            # PostgreSQL on localhost:5432 (user postgres, password postgres, db bingo)
+```
 
 ```bash
 cd backend
-cp .env.example .env            # set DATABASE_URL, JWT_SECRET, DEV_LOGIN=true, ADMIN_TELEGRAM_IDS=1
+cp .env.example .env            # set JWT_SECRET, DEV_LOGIN=true, ADMIN_TELEGRAM_IDS=1
 npm install
 npx prisma migrate deploy
 npm run start:dev               # API on http://localhost:3000/api
@@ -43,6 +47,36 @@ npm run test:e2e                # full rounds against a real database (bingo_tes
 
 `test:e2e` uses `TEST_DATABASE_URL` (default `postgresql://postgres@localhost:5433/bingo_test?host=/tmp`) and
 refuses to run against a database whose name does not end in `_test`.
+
+## Test inside Telegram from your computer
+
+The bot uses long polling, so it works from your computer with no public address. The game screen is
+different: Telegram only opens `https` addresses, so you expose the local dev server with a free tunnel.
+
+1. Create a test bot with [@BotFather](https://t.me/BotFather) and get your Telegram user id from
+   [@userinfobot](https://t.me/userinfobot).
+2. Start the tunnel (keep it running):
+   ```bash
+   cloudflared tunnel --url http://localhost:5173
+   ```
+   It prints an address like `https://something-words.trycloudflare.com`. (`ngrok http 5173` works too.)
+3. In `backend/.env` set:
+   ```
+   BOT_TOKEN=<token from BotFather>
+   BOT_USERNAME=<bot username without @>
+   MINIAPP_URL=https://something-words.trycloudflare.com
+   ADMIN_TELEGRAM_IDS=<your Telegram user id>
+   TELEBIRR_ACCOUNT=<any number, for testing>
+   TELEBIRR_NAME=<the name that appears in the SMS>
+   ```
+   and restart the backend. The log shows `Bot @yourbot is running`.
+4. Open your bot in Telegram, send `/start`, tap **Play now**. The game opens inside Telegram and signs you
+   in automatically.
+5. To test a full round you need 2 players: ask a friend to `/start` the bot, or join from the browser with
+   the developer sign-in (http://localhost:5173, any id other than yours).
+
+The tunnel address changes every time you restart `cloudflared`; update `MINIAPP_URL` and restart the
+backend when it does.
 
 ## Going live with Telegram
 
