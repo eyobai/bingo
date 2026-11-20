@@ -21,7 +21,7 @@ docker compose up -d            # PostgreSQL on localhost:55432 (user postgres, 
 ```bash
 cd backend
 cp .env.example .env            # set JWT_SECRET, DEV_LOGIN=true, ADMIN_TELEGRAM_IDS=1
-npm install
+npm install                     # also generates the database client (prisma generate)
 npx prisma migrate deploy
 npm run start:dev               # API on http://localhost:3000/api
 ```
