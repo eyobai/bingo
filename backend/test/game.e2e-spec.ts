@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module';
 import { completeLines } from '../src/bingo/cards';
 import { ballOrder, hashSeed } from '../src/bingo/fair';
 import { LedgerService } from '../src/ledger/ledger.service';
+import { BotService } from '../src/bot/bot.service';
 import { setupApp } from '../src/main';
 
 const sms = (amount: string, ref: string, to = 'ABEBE KEBEDE') =>
@@ -166,6 +167,48 @@ describe('bingo platform (integration)', () => {
     const s = await waitFor(['CANCELLED'], 't1');
     expect(s.cancelled.reason).toBe('NOT_ENOUGH_PLAYERS');
     expect(await balances(carol.token)).toEqual(start);
+    expect(await app.get(LedgerService).trialBalance()).toBe(0n);
+  });
+
+  it('staff dashboard: code sign-in, players, corrections, blocking, room settings', async () => {
+    // Capture the code the bot would send.
+    let lastDm = '';
+    app.get(BotService).dm = async (_chat: string, html: string) => {
+      lastDm = html;
+      return true;
+    };
+    await http.post('/api/auth/staff/code').send({ telegramId: '1' }).expect(200);
+    const code = /(\d{6})/.exec(lastDm)![1];
+    await http.post('/api/auth/staff/verify').send({ telegramId: '1', code: '000000' === code ? '111111' : '000000' }).expect(401);
+    const signed = await http.post('/api/auth/staff/verify').send({ telegramId: '1', code }).expect(200);
+    const staff = signed.body.token as string;
+    // A used code does not work twice; a non-staff id gets the same answer but no code.
+    await http.post('/api/auth/staff/verify').send({ telegramId: '1', code }).expect(401);
+    lastDm = '';
+    await http.post('/api/auth/staff/code').send({ telegramId: '100' }).expect(200);
+    expect(lastDm).toBe('');
+
+    const list = (await http.get('/api/admin/players?q=ali').set(auth(staff)).expect(200)).body;
+    expect(list.map((p: any) => p.name)).toContain('Alice');
+    const alice = list.find((p: any) => p.name === 'Alice');
+
+    const before = (await http.get(`/api/admin/players/${alice.id}`).set(auth(staff)).expect(200)).body;
+    expect(before.stats.cardsBought).toBe(4);
+    const after = (await http.post(`/api/admin/players/${alice.id}/adjust`).set(auth(staff)).send({ wallet: 'main', amountBirr: '50', reason: 'Goodwill' }).expect(200)).body;
+    expect(BigInt(after.main.minor) - BigInt(before.balances.main.minor)).toBe(5000n);
+    const tooMuch = await http.post(`/api/admin/players/${alice.id}/adjust`).set(auth(staff)).send({ wallet: 'play', amountBirr: '-99999', reason: 'Test' }).expect(422);
+    expect(tooMuch.body.code).toBe('INSUFFICIENT_FUNDS');
+
+    // Blocked players cannot buy cards or withdraw.
+    await http.post(`/api/admin/players/${alice.id}/block`).set(auth(staff)).send({ blocked: true }).expect(200);
+    const aliceToken = (await http.post('/api/auth/dev').send({ telegramId: 100, firstName: 'Alice' })).body;
+    expect(aliceToken.code).toBe('BLOCKED');
+    await http.post(`/api/admin/players/${alice.id}/block`).set(auth(staff)).send({ blocked: false }).expect(200);
+
+    // Room settings apply from the next round.
+    const room = (await http.patch('/api/admin/rooms/t1').set(auth(staff)).send({ stakeBirr: 20, guaranteedPrizeBirr: 500, maxCardsPerPlayer: 2 }).expect(200)).body;
+    expect(room.stakeMinor.birr).toBe('20');
+    await http.patch('/api/admin/rooms/t1').set(auth(staff)).send({ cardPool: 5000 }).expect(400);
     expect(await app.get(LedgerService).trialBalance()).toBe(0n);
   });
 });

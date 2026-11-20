@@ -135,6 +135,19 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       }),
     );
 
+    bot.command('admin', async (ctx) => {
+      const staff = await this.prisma.user.findUnique({ where: { telegramId: BigInt(ctx.from!.id) } });
+      const isStaff = staff?.role === Role.ADMIN || this.config.adminTelegramIds.has(String(ctx.from!.id));
+      if (!isStaff) return ctx.reply('Use /play to open the game.');
+      const url = this.config.adminUrl;
+      await ctx.reply(
+        url
+          ? `🛠 Staff dashboard:\n${url}\n\nSign in with your Telegram id <code>${ctx.from!.id}</code>; the code arrives here.`
+          : 'Set MINIAPP_URL so the dashboard address is known.',
+        { parse_mode: 'HTML' },
+      );
+    });
+
     bot.command(['rules', 'help', 'instructions'], (ctx) => ctx.reply(RULES, { parse_mode: 'HTML', reply_markup: this.playKeyboard() }));
 
     bot.command('balance', async (ctx) => {
@@ -262,6 +275,18 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       await this.bot?.api.sendMessage(chatId.toString(), text, extra);
     } catch (e) {
       this.logger.warn(`Message to ${chatId} failed: ${(e as Error).message}`);
+    }
+  }
+
+  /** Sends an HTML message to one person. False when the bot is off or Telegram refused it. */
+  async dm(chatId: string, html: string): Promise<boolean> {
+    if (!this.bot) return false;
+    try {
+      await this.bot.api.sendMessage(chatId, html, { parse_mode: 'HTML' });
+      return true;
+    } catch (e) {
+      this.logger.warn(`Message to ${chatId} failed: ${(e as Error).message}`);
+      return false;
     }
   }
 

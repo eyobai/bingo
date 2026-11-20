@@ -1,9 +1,13 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
-import { DepositStatus, WithdrawalStatus, AccountType } from '@prisma/client';
+import { Matches } from 'class-validator';
+import { StaffAuthService } from './auth/staff-auth.service';
+import { MAX_CARD_POOL } from './bingo/game.service';
+import { WalletService } from './wallet/wallet.service';
+import { AccountType, DepositStatus, Prisma, TxType, WithdrawalStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsNumberString, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 import { GameService } from './bingo/game.service';
-import { AdminOnly, CurrentUser, money, type AuthUser } from './common/common';
+import { AdminOnly, AppError, CurrentUser, Public, money, type AuthUser } from './common/common';
 import { LedgerService } from './ledger/ledger.service';
 import { PaymentsService, depositView, withdrawalView } from './payments/payments.service';
 import { PrismaService } from './prisma.service';
@@ -15,7 +19,27 @@ class ApproveDepositDto {
 class NoteDto {
   @IsOptional() @IsString() @Length(0, 255) note?: string;
 }
+class StaffCodeDto {
+  @Matches(/^\d{1,15}$/, { message: 'Telegram id is a number' }) telegramId!: string;
+}
+class StaffVerifyDto {
+  @Matches(/^\d{1,15}$/, { message: 'Telegram id is a number' }) telegramId!: string;
+  @Matches(/^\d{6}$/, { message: 'The code has 6 digits' }) code!: string;
+}
+class BlockDto {
+  @IsBoolean() blocked!: boolean;
+}
+class AdjustDto {
+  @IsIn(['main', 'play']) wallet!: 'main' | 'play';
+  /** Whole birr. Negative takes money away. */
+  @Matches(/^-?\d{1,7}$/, { message: 'Amount is a whole number of birr, e.g. 50 or -50' }) amountBirr!: string;
+  @IsString() @Length(3, 200) reason!: string;
+}
 class RoomUpdateDto {
+  @IsOptional() @IsString() @Length(2, 60) name?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10_000) stakeBirr?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(20) @Max(MAX_CARD_POOL) cardPool?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10) maxCardsPerPlayer?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(1_000_000) guaranteedPrizeBirr?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(5000) houseCutBps?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(15) @Max(300) selectSeconds?: number;
@@ -33,6 +57,7 @@ export class AdminController {
     private readonly payments: PaymentsService,
     private readonly ledger: LedgerService,
     private readonly game: GameService,
+    private readonly wallet: WalletService,
   ) {}
 
   @Get('summary')
@@ -127,11 +152,16 @@ export class AdminController {
 
   @Patch('rooms/:id')
   async updateRoom(@Param('id') id: string, @Body() body: RoomUpdateDto) {
-    const { guaranteedPrizeBirr, ...rest } = body;
+    const { guaranteedPrizeBirr, stakeBirr, ...rest } = body;
     const r = await this.prisma.room.update({
       where: { id },
-      data: { ...rest, ...(guaranteedPrizeBirr !== undefined ? { guaranteedPrizeMinor: BigInt(guaranteedPrizeBirr) * 100n } : {}) },
+      data: {
+        ...rest,
+        ...(guaranteedPrizeBirr !== undefined ? { guaranteedPrizeMinor: BigInt(guaranteedPrizeBirr) * 100n } : {}),
+        ...(stakeBirr !== undefined ? { stakeMinor: BigInt(stakeBirr) * 100n } : {}),
+      },
     });
+    if (r.isActive) await this.game.ensureRoom(r.id);
     return { ...r, stakeMinor: money(r.stakeMinor), guaranteedPrizeMinor: money(r.guaranteedPrizeMinor), note: 'Applies from the next round.' };
   }
 
@@ -153,9 +183,139 @@ export class AdminController {
     }));
   }
 
+  @Get('players')
+  async players(@Query('q') q = '', @Query('filter') filter = '') {
+    const term = q.trim();
+    const where: Prisma.UserWhereInput = {
+      ...(filter === 'blocked' ? { isBlocked: true } : filter === 'staff' ? { role: 'ADMIN' } : {}),
+      ...(term
+        ? {
+            OR: [
+              { firstName: { contains: term, mode: 'insensitive' } },
+              { username: { contains: term.replace(/^@/, ''), mode: 'insensitive' } },
+              ...(/^\d{1,15}$/.test(term) ? [{ telegramId: BigInt(term) }] : []),
+            ],
+          }
+        : {}),
+    };
+    const users = await this.prisma.user.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100, include: { accounts: true } });
+    return users.map((u) => {
+      const bal = (t: AccountType) => u.accounts.find((a) => a.type === t)?.balanceMinor ?? 0n;
+      return {
+        id: u.id,
+        telegramId: u.telegramId.toString(),
+        name: [u.firstName, u.lastName].filter(Boolean).join(' '),
+        username: u.username,
+        role: u.role,
+        isBlocked: u.isBlocked,
+        joinedAt: u.createdAt,
+        main: money(bal(AccountType.USER_MAIN)),
+        play: money(bal(AccountType.USER_PLAY)),
+      };
+    });
+  }
+
+  @Get('players/:id')
+  async player(@Param('id') id: string) {
+    const u = await this.prisma.user.findUnique({ where: { id }, include: { referredBy: { select: { firstName: true } } } });
+    if (!u) throw new AppError(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'Player not found.');
+    const [balances, history, deposits, withdrawals, cards, wins, invited] = await Promise.all([
+      this.wallet.balances(id),
+      this.wallet.history(id, 50),
+      this.prisma.deposit.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 20 }),
+      this.prisma.withdrawal.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 20 }),
+      this.prisma.card.aggregate({ where: { userId: id }, _count: true, _sum: { paidMainMinor: true, paidPlayMinor: true } }),
+      this.prisma.winner.aggregate({ where: { userId: id }, _count: true, _sum: { prizeMinor: true } }),
+      this.prisma.user.count({ where: { referredById: id } }),
+    ]);
+    const deposited = deposits.filter((d) => d.status === 'APPROVED').reduce((s, d) => s + d.amountMinor, 0n);
+    const withdrawn = withdrawals.filter((w) => w.status === 'PAID').reduce((s, w) => s + w.amountMinor, 0n);
+    return {
+      id: u.id,
+      telegramId: u.telegramId.toString(),
+      name: [u.firstName, u.lastName].filter(Boolean).join(' '),
+      username: u.username,
+      role: u.role,
+      isBlocked: u.isBlocked,
+      joinedAt: u.createdAt,
+      language: u.language,
+      invitedBy: u.referredBy?.firstName ?? null,
+      invited,
+      balances,
+      stats: {
+        cardsBought: cards._count,
+        spentOnCards: money((cards._sum.paidMainMinor ?? 0n) + (cards._sum.paidPlayMinor ?? 0n)),
+        wins: wins._count,
+        prizesWon: money(wins._sum.prizeMinor ?? 0n),
+        deposited: money(deposited),
+        withdrawn: money(withdrawn),
+      },
+      history,
+      deposits: deposits.map(depositView),
+      withdrawals: withdrawals.map(withdrawalView),
+    };
+  }
+
+  @Post('players/:id/block')
+  @HttpCode(HttpStatus.OK)
+  async block(@CurrentUser() staff: AuthUser, @Param('id') id: string, @Body() body: BlockDto) {
+    if (id === staff.id) throw new AppError(HttpStatus.BAD_REQUEST, 'SELF', 'You cannot block yourself.');
+    const u = await this.prisma.user.update({ where: { id }, data: { isBlocked: body.blocked } });
+    return { id: u.id, isBlocked: u.isBlocked };
+  }
+
+  /**
+   * Manual correction with a reason, e.g. a deposit credited twice by mistake or a goodwill gesture.
+   * Money comes from or goes to the ADJUSTMENTS account, so the books still balance and the change is traceable.
+   */
+  @Post('players/:id/adjust')
+  @HttpCode(HttpStatus.OK)
+  async adjust(@CurrentUser() staff: AuthUser, @Param('id') id: string, @Body() body: AdjustDto) {
+    const amount = BigInt(body.amountBirr) * 100n;
+    if (amount === 0n) throw new AppError(HttpStatus.BAD_REQUEST, 'BAD_AMOUNT', 'Amount cannot be 0.');
+    await this.ledger.withTx(async (tx) => {
+      const accounts = await this.ledger.userAccounts(id, tx);
+      const target = body.wallet === 'main' ? accounts.main : accounts.play;
+      const adjustments = await this.ledger.systemAccount(AccountType.ADJUSTMENTS, tx);
+      await this.ledger.post(
+        {
+          type: TxType.ADJUSTMENT,
+          description: `Correction by staff: ${body.reason}`,
+          metadata: { staffId: staff.id, reason: body.reason },
+          lines: [
+            { accountId: target.id, amountMinor: amount },
+            { accountId: adjustments.id, amountMinor: -amount },
+          ],
+        },
+        tx,
+      );
+    });
+    return this.wallet.balances(id);
+  }
+
   /** Not used by the game; handy to check the engine is alive. */
   @Get('live')
   live() {
     return this.game.roomIds().map((id) => this.game.publicState(id));
+  }
+}
+
+/** Dashboard sign-in for staff: a one-time code sent by the bot. */
+@Controller('auth/staff')
+export class StaffAuthController {
+  constructor(private readonly staff: StaffAuthService) {}
+
+  @Public()
+  @Post('code')
+  @HttpCode(HttpStatus.OK)
+  code(@Body() body: StaffCodeDto) {
+    return this.staff.sendCode(body.telegramId);
+  }
+
+  @Public()
+  @Post('verify')
+  @HttpCode(HttpStatus.OK)
+  verify(@Body() body: StaffVerifyDto) {
+    return this.staff.verify(body.telegramId, body.code);
   }
 }

@@ -15,6 +15,8 @@ import { settle } from './prize';
 const CLOSE_GRACE_MS = 300;
 const CANCELLED_PAUSE_MS = 4000;
 const MIN_PLAYERS = 2;
+/** Card numbers run 1..1000 at most; rooms choose how many of them to offer. */
+export const MAX_CARD_POOL = 1000;
 
 interface LiveWinner {
   cardNo: number;
@@ -76,9 +78,15 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       });
     }
     const rooms = await this.prisma.room.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } });
-    const maxPool = Math.max(400, ...rooms.map((r) => r.cardPool));
-    this.cardSet = generateCardSet(maxPool, this.config.cardSetSeed);
+    this.cardSet = generateCardSet(MAX_CARD_POOL, this.config.cardSetSeed);
     for (const room of rooms) await this.resume(room);
+  }
+
+  /** Starts a room that staff just switched on. A running room picks up new settings at its next round. */
+  async ensureRoom(roomId: string) {
+    if (this.live.has(roomId)) return;
+    const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+    if (room?.isActive) await this.resume(room);
   }
 
   onModuleDestroy() {

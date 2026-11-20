@@ -202,6 +202,8 @@ export class PaymentsService {
       );
     }
     const w = await this.ledger.withTx(async (tx) => {
+      const owner = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+      if (owner.isBlocked) throw new AppError(HttpStatus.FORBIDDEN, 'BLOCKED', 'Your account is blocked. Contact support.');
       const { main, hold } = await this.ledger.userAccounts(userId, tx);
       // Locks the main account first so two requests at once cannot both pass the "one pending" check.
       await tx.$queryRaw`SELECT id FROM ledger_accounts WHERE id = ${main.id}::uuid FOR UPDATE`;

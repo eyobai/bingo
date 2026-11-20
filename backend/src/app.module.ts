@@ -3,7 +3,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
-import { AdminController } from './admin.controller';
+import { AdminController, StaffAuthController } from './admin.controller';
+import { StaffAuthService } from './auth/staff-auth.service';
 import { AuthController, GameController, MeController, PaymentsController } from './api.controllers';
 import { GameGateway } from './bingo/game.gateway';
 import { GameService } from './bingo/game.service';
@@ -43,7 +44,7 @@ const config = loadConfig();
 
 @Module({
   imports: [PrismaModule, NotifyModule, JwtModule.register({ secret: config.jwtSecret })],
-  controllers: [HealthController, AuthController, MeController, GameController, PaymentsController, AdminController],
+  controllers: [HealthController, AuthController, MeController, GameController, PaymentsController, AdminController, StaffAuthController],
   providers: [
     { provide: APP_CONFIG, useValue: config },
     AuthGuard,
@@ -56,6 +57,7 @@ const config = loadConfig();
     GameService,
     GameGateway,
     BotService,
+    StaffAuthService,
   ],
 })
 export class AppModule {}

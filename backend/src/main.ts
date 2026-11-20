@@ -40,36 +40,45 @@ export function setupApp(app: INestApplication) {
 }
 
 /**
- * Serves the built Mini App (miniapp/dist) from the same address as the API, so one service and one https
- * address run everything. Skipped when the folder is missing (for example while developing with Vite).
+ * Serves the built web apps from the same address as the API, so one service and one https address run
+ * everything: the game (miniapp/dist) at "/" and the staff dashboard (admin/dist) at "/admin/".
+ * A missing build is skipped (for example while developing with Vite).
  */
-function serveMiniApp(app: NestExpressApplication) {
-  const dir = resolve(process.env.MINIAPP_DIST ?? join(__dirname, '..', '..', 'miniapp', 'dist'));
-  const index = join(dir, 'index.html');
-  if (!existsSync(index)) {
-    new Logger('MiniApp').warn(`No built Mini App at ${dir}; serving the API only.`);
-    return;
+function serveWebApps(app: NestExpressApplication) {
+  const root = join(__dirname, '..', '..');
+  const apps = [
+    { name: 'Dashboard', prefix: '/admin', dir: resolve(process.env.ADMIN_DIST ?? join(root, 'admin', 'dist')) },
+    { name: 'MiniApp', prefix: '', dir: resolve(process.env.MINIAPP_DIST ?? join(root, 'miniapp', 'dist')) },
+  ];
+  for (const web of apps) {
+    const index = join(web.dir, 'index.html');
+    if (!existsSync(index)) {
+      new Logger(web.name).warn(`No build at ${web.dir}; not served.`);
+      continue;
+    }
+    app.useStaticAssets(web.dir, {
+      prefix: web.prefix ? `${web.prefix}/` : undefined,
+      index: false,
+      setHeaders: (res, path) => {
+        // Built files have a content hash in their name and never change; sounds change rarely.
+        if (path.includes(join('assets', ''))) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        else if (path.includes('sounds')) res.setHeader('Cache-Control', 'public, max-age=86400');
+      },
+    });
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/socket.io')) return next();
+      if (web.prefix ? !req.path.startsWith(web.prefix) : req.path.startsWith('/admin')) return next();
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(index);
+    });
+    new Logger(web.name).log(`Serving ${web.dir} at ${web.prefix || '/'}`);
   }
-  app.useStaticAssets(dir, {
-    index: false,
-    setHeaders: (res, path) => {
-      // Built files have a content hash in their name and never change; sounds change rarely.
-      if (path.includes(`${join('assets', '')}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      else if (path.includes('sounds')) res.setHeader('Cache-Control', 'public, max-age=86400');
-    },
-  });
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/socket.io')) return next();
-    res.setHeader('Cache-Control', 'no-cache');
-    res.sendFile(index);
-  });
-  new Logger('MiniApp').log(`Serving the Mini App from ${dir}`);
 }
 
 async function main() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = setupApp(app);
-  serveMiniApp(app);
+  serveWebApps(app);
   await app.listen(config.port, '0.0.0.0');
 }
 

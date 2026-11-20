@@ -47,6 +47,8 @@ export interface AppConfig {
   jwtTtl: string;
   corsOrigins: string[];
   bot: { token: string; username: string; miniAppUrl: string; initDataMaxAge: number };
+  /** Staff dashboard address: MINIAPP_URL + /admin/ (the server hosts both). */
+  adminUrl: string;
   adminTelegramIds: Set<string>;
   devLogin: boolean;
   cardSetSeed: string;
@@ -79,6 +81,7 @@ export function buildConfig(env: Record<string, any>): AppConfig {
       miniAppUrl: env.MINIAPP_URL,
       initDataMaxAge: env.INIT_DATA_MAX_AGE_SECONDS,
     },
+    adminUrl: env.MINIAPP_URL ? new URL('/admin/', env.MINIAPP_URL).toString() : '',
     adminTelegramIds: new Set(
       String(env.ADMIN_TELEGRAM_IDS)
         .split(',')
