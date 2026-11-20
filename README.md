@@ -15,7 +15,7 @@ miniapp/   React + Vite + Tailwind, opened from the bot's "Play" button
 Needs Node.js 22 and PostgreSQL 16. The easiest way to get the database is Docker:
 
 ```bash
-docker compose up -d            # PostgreSQL on localhost:5432 (user postgres, password postgres, db bingo)
+docker compose up -d            # PostgreSQL on localhost:5433 (user postgres, password postgres, db bingo)
 ```
 
 ```bash
