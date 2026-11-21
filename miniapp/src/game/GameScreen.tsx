@@ -3,7 +3,7 @@ import { ApiError, type Balances, type RoomState } from '../api';
 import { useI18n } from '../i18n';
 import { telegram } from '../telegram';
 import { useCaller, useSoundSetting } from './caller';
-import { BallChip, BigBall, BingoCard, GoldBall, LETTERS, colorOf } from './parts';
+import { BallChip, BigBall, BingoCard, GoldBall, LETTERS, colorOf, letterOf, oneAway } from './parts';
 import { useRoom, useTick } from './useRoom';
 
 interface Props {
@@ -18,6 +18,11 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
   const { state } = room;
   useTick(250);
   useCaller(state?.round.id ?? '', state?.round.status ?? '', state?.round.calls ?? NO_CALLS);
+  // A new phase (countdown, draw, result) starts at the top, even if the player had scrolled down the card list.
+  const phase = `${state?.round.id}:${state?.round.status}`;
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [phase]);
 
   if (!state) {
     return <div className="flex h-64 items-center justify-center text-muted">…</div>;
@@ -251,6 +256,78 @@ function PlayView({ state, mine, layouts }: RoomHook) {
   const last = calls.at(-1) ?? null;
   const recent = calls.slice(-4, -1).reverse();
   const playing = mine.length > 0 && layouts.length > 0;
+  // With 3-4 cards the board moves out of the way so every card fits on screen without scrolling.
+  const compact = playing && mine.length >= 3;
+  const [boardOpen, setBoardOpen] = useState(false);
+
+  const modeSwitch = (
+    <div className="grid grid-cols-2 rounded-full border border-line bg-panel p-0.5 text-[10px] font-black uppercase">
+      {(['auto', 'manual'] as const).map((m) => (
+        <button key={m} type="button" onClick={() => setModeSaved(m)} aria-pressed={mode === m} className={`rounded-full py-1.5 ${mode === m ? 'bg-ink text-bg' : 'text-muted'}`}>
+          {t(m)}
+        </button>
+      ))}
+    </div>
+  );
+  const cards = mine.map((n) => {
+    const layout = layouts[n - 1];
+    const needs = oneAway(layout, marked);
+    return (
+      <BingoCard
+        key={n}
+        cardNo={n}
+        layout={layout}
+        marked={marked}
+        hint={mode === 'manual' ? called : undefined}
+        onCell={mode === 'manual' ? toggleMark : undefined}
+        compact
+        tone="mine"
+        needs={needs}
+        needsLabel={needs ? t('oneAway', { n: `${letterOf(needs)}-${needs}` }) : undefined}
+      />
+    );
+  });
+
+  if (compact) {
+    return (
+      <div className="flex flex-col">
+        <RoundBar state={state} />
+        <div className="flex items-center gap-2 px-2 pt-2">
+          <BigBall n={last} size={64} />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <div className="flex h-8 items-center gap-1">
+              {recent.map((n) => (
+                <BallChip key={n} n={n} size={30} />
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-x-3 text-[11px] font-black tabular-nums">
+              <span className="text-muted">
+                {t('balls')} <span className="text-gold">{calls.length}/75</span>
+              </span>
+              <span className="text-muted">
+                {t('prizePool')} <span className="text-gold">{state.round.prize.birr} ETB</span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 p-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setBoardOpen((v) => !v)}
+              aria-expanded={boardOpen}
+              className="flex-1 rounded-full border border-line bg-panel py-1.5 text-[10px] font-black uppercase tracking-wider"
+            >
+              ▦ {boardOpen ? t('hideBoard') : t('showBoard')}
+            </button>
+            <div className="w-40 shrink-0">{modeSwitch}</div>
+          </div>
+          {boardOpen && <WideBoard calls={calls} />}
+          <div className="grid grid-cols-2 gap-2">{cards}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col">
@@ -286,32 +363,9 @@ function PlayView({ state, mine, layouts }: RoomHook) {
 
           {playing ? (
             <div className="flex w-full flex-col gap-2">
-              <div className="grid grid-cols-2 rounded-full border border-line bg-panel p-0.5 text-[10px] font-black uppercase">
-                {(['auto', 'manual'] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setModeSaved(m)}
-                    aria-pressed={mode === m}
-                    className={`rounded-full py-1.5 ${mode === m ? 'bg-ink text-bg' : 'text-muted'}`}
-                  >
-                    {t(m)}
-                  </button>
-                ))}
-              </div>
+              {modeSwitch}
               <p className="text-center text-[10px] leading-snug text-muted">{mode === 'auto' ? t('autoHelp') : t('manualHelp')}</p>
-              {mine.map((n) => (
-                <BingoCard
-                  key={n}
-                  cardNo={n}
-                  layout={layouts[n - 1]}
-                  marked={marked}
-                  hint={mode === 'manual' ? called : undefined}
-                  onCell={mode === 'manual' ? toggleMark : undefined}
-                  compact
-                  tone="mine"
-                />
-              ))}
+              {cards}
             </div>
           ) : (
             <div className="flex min-h-48 w-full items-center justify-center rounded-2xl border border-line bg-panel px-4 py-8 text-center">
@@ -320,6 +374,32 @@ function PlayView({ state, mine, layouts }: RoomHook) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 1-75 as five rows (one per letter) across the full width; used when there is no room for the side board. */
+function WideBoard({ calls }: { calls: number[] }) {
+  const set = new Set(calls);
+  const last = calls.at(-1);
+  return (
+    <div className="grid grid-cols-[repeat(16,minmax(0,1fr))] gap-[3px] rounded-xl border border-line bg-panel p-1.5">
+      {LETTERS.map((l, c) => (
+        <div key={l} className="contents">
+          <div className="flex aspect-square items-center justify-center rounded font-display text-[10px] text-white" style={{ background: colorOf(c * 15 + 1) }}>
+            {l}
+          </div>
+          {Array.from({ length: 15 }, (_, i) => c * 15 + i + 1).map((n) => (
+            <div
+              key={n}
+              className={`flex aspect-square items-center justify-center rounded text-[9px] font-bold tabular-nums ${set.has(n) ? 'text-white' : 'bg-panel-2 text-muted'} ${n === last ? 'ring-2 ring-white' : ''}`}
+              style={set.has(n) ? { background: colorOf(n) } : undefined}
+            >
+              {n}
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

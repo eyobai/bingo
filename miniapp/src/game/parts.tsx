@@ -62,6 +62,15 @@ export function GoldBall({ n, style }: { n: number; style?: CSSProperties }) {
   );
 }
 
+/** The one number a card still needs to complete a line, or null when it needs more than one. */
+export function oneAway(layout: number[], marked: Set<number>): number | null {
+  for (const line of LINES) {
+    const missing = line.map((i) => layout[i]).filter((n) => n !== 0 && !marked.has(n));
+    if (missing.length === 1) return missing[0];
+  }
+  return null;
+}
+
 interface CardProps {
   cardNo: number;
   layout: number[];
@@ -74,15 +83,19 @@ interface CardProps {
   compact?: boolean;
   label?: string;
   tone?: 'mine' | 'winner' | 'plain';
+  /** Number the card needs for a full line: the card glows and that square is outlined. */
+  needs?: number | null;
+  /** Shown in the card's header when it needs one number, e.g. "1 away: G-52". */
+  needsLabel?: string;
 }
 
-export function BingoCard({ cardNo, layout, marked, hint, winLine, onCell, compact, label, tone = 'plain' }: CardProps) {
+export function BingoCard({ cardNo, layout, marked, hint, winLine, onCell, compact, label, tone = 'plain', needs, needsLabel }: CardProps) {
   const win = winLine !== undefined ? new Set(LINES[winLine]) : null;
-  const border = tone === 'winner' ? 'border-gold' : tone === 'mine' ? 'border-gold/50' : 'border-line';
+  const border = needs ? 'border-gold near-glow' : tone === 'winner' ? 'border-gold' : tone === 'mine' ? 'border-gold/50' : 'border-line';
   return (
-    <div className={`rounded-2xl border-2 ${border} bg-white p-2 text-gray-900 shadow-lg`}>
-      <div className="mb-1.5 flex items-center justify-between px-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-        <span>{label ?? ''}</span>
+    <div className={`rounded-2xl border-2 ${border} bg-white ${compact ? 'p-1.5' : 'p-2'} text-gray-900 shadow-lg`}>
+      <div className="mb-1.5 flex items-center justify-between gap-1 px-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+        <span className={`truncate ${needs ? 'rounded bg-gold px-1 text-gold-ink' : ''}`}>{needs ? needsLabel : (label ?? '')}</span>
         <span className="text-gray-800">#{cardNo}</span>
       </div>
       <div className="grid grid-cols-5 gap-1">
@@ -96,7 +109,8 @@ export function BingoCard({ cardNo, layout, marked, hint, winLine, onCell, compa
           const isMarked = free || marked.has(n);
           const isWin = win?.has(i);
           const isHint = !isMarked && hint?.has(n);
-          const base = `flex aspect-square items-center justify-center rounded-lg font-bold tabular-nums ${compact ? 'text-xs' : 'text-sm'}`;
+          const isNeeded = needs !== undefined && needs !== null && n === needs;
+          const base = `flex aspect-square items-center justify-center rounded-lg font-bold tabular-nums ${compact ? 'text-xs' : 'text-sm'} ${isNeeded ? 'ring-2 ring-gold ring-offset-1 animate-pulse' : ''}`;
           const look = isWin
             ? 'bg-win text-white shadow-inner'
             : isMarked
