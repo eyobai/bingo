@@ -48,7 +48,7 @@ export function Lobby({ onOpen }: { onOpen: (roomId: string) => void }) {
   const now = () => Date.now() + offset.current;
 
   return (
-    <div className="flex flex-col gap-3 px-3 pb-4 pt-3">
+    <div className="flex flex-col gap-2 px-3 pb-4 pt-3">
       <div className="px-1">
         <h1 className="font-display text-2xl">{t('games')}</h1>
         <p className="text-xs text-muted">{t('gamesSub')}</p>
@@ -69,14 +69,12 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
   const left = Math.max(0, Math.ceil((new Date(r.selectEndsAt).getTime() - now) / 1000));
   const progress = drawing ? r.calls / BALLS : selecting ? 1 - Math.min(1, left / Math.max(1, room.selectSeconds)) : 1;
 
-  const pill = drawing ? `${t('inPlay')}` : selecting ? `${t('selecting')} · ${left}s` : t('nextSoon');
-  const note = drawing
-    ? t('calledOf', { n: r.calls, total: BALLS })
+  // One short status line: what is happening and what it needs.
+  const status = drawing
+    ? `● ${t('inPlay')} · ${r.calls}/${BALLS}`
     : selecting
-      ? r.needPlayers > 0
-        ? t('moreToStart', { n: r.needPlayers })
-        : t('readyToStart')
-      : '';
+      ? `${left}s · ${r.needPlayers > 0 ? t('moreToStart', { n: r.needPlayers }) : t('readyToStart')}`
+      : t('nextSoon');
 
   return (
     <button
@@ -85,62 +83,47 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
         telegram.tap();
         onOpen();
       }}
-      className="relative flex w-full flex-col gap-3 overflow-hidden rounded-2xl border bg-panel p-4 text-left transition-transform active:scale-[0.99]"
-      style={{ borderColor: `${color}66`, boxShadow: `0 0 0 1px ${color}22, 0 8px 28px -12px ${color}55` }}
+      className="relative flex w-full items-center gap-3 overflow-hidden rounded-xl border border-line bg-panel py-2.5 pl-4 pr-2.5 text-left active:bg-panel-2"
     >
-      <div className="flex items-start justify-between gap-3">
-        <span className="min-w-0">
-          {/* The card price is what players choose by, so it is the title. */}
-          <span className="flex items-baseline gap-1.5">
-            <span className="font-display text-[30px] leading-none tabular-nums" style={{ color }}>
-              {fmt(room.stake.birr)}
-            </span>
-            <span className="font-display text-sm text-ink">ETB</span>
-            <span className="text-[11px] font-bold text-muted">{t('perCard')}</span>
-          </span>
-          <span className="mt-1.5 flex items-center gap-1.5 truncate text-xs text-muted">
-            <span className="font-bold text-ink">{room.name}</span>
-            <span aria-hidden>·</span>
-            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: drawing ? 'var(--color-live)' : color }} />
-            {r.players} {drawing ? t('playing') : t('waiting')}
-          </span>
-        </span>
-        <span
-          className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${drawing ? 'border-line text-muted' : ''}`}
-          style={drawing ? undefined : { borderColor: `${color}88`, color }}
-        >
-          {drawing && <span className="mr-1 text-live">●</span>}
-          {pill}
-        </span>
-      </div>
+      {/* Room colour on the left edge */}
+      <span className="absolute inset-y-0 left-0 w-1" style={{ background: color }} aria-hidden />
 
-      <div className="flex items-end justify-between gap-3">
-        <span className="min-w-0">
-          <span className="block text-[10px] font-bold uppercase tracking-widest text-muted">{t('maxWin')}</span>
-          <span className="font-display text-2xl leading-tight tabular-nums" style={{ color }}>
-            {fmt(room.maxWin.birr)}
+      <span className="w-[74px] shrink-0">
+        <span className="flex items-baseline gap-1">
+          <span className="font-display text-2xl leading-none tabular-nums" style={{ color }}>
+            {fmt(room.stake.birr)}
           </span>
-          <span className="ml-1 text-xs text-muted">ETB</span>
-          <span className="mt-0.5 block text-[11px] font-bold text-muted">
-            {t('prizeNow')} <span className="text-ink">{fmt(r.prize.birr)} ETB</span>
-          </span>
+          <span className="text-[10px] font-black text-ink">ETB</span>
         </span>
-        <span
-          className={`shrink-0 rounded-xl px-6 py-3 font-display text-base ${selecting ? 'text-bg' : 'border-2 bg-transparent'}`}
-          style={selecting ? { background: color } : { borderColor: color, color }}
-        >
-          {selecting ? `${t('join')} · ${fmt(room.stake.birr)}` : t('watch')}
-        </span>
-      </div>
+        <span className="mt-1 block truncate text-[11px] font-bold text-muted">{room.name}</span>
+      </span>
 
-      {note && (
-        <span className="-mb-1 text-right text-[11px] font-bold" style={{ color }}>
-          {note}
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="block truncate text-[13px] font-bold text-ink">
+          🏆 {fmt(r.prize.birr)} <span className="text-[11px] text-muted">ETB</span>
+          <span className="ml-1.5 text-[11px] font-semibold text-muted">
+            · {t('maxShort')} {fmt(room.maxWin.birr)}
+          </span>
         </span>
-      )}
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-panel-2" aria-hidden>
-        <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.round(progress * 100)}%`, background: color }} />
-      </div>
+        <span className="mt-0.5 block truncate text-[11px] text-muted">
+          👤 {r.players} {drawing ? t('playing') : t('waiting')}
+        </span>
+        <span className={`mt-0.5 block truncate text-[11px] font-bold ${drawing ? 'text-live' : ''}`} style={drawing ? undefined : { color }}>
+          {status}
+        </span>
+      </span>
+
+      <span
+        className={`shrink-0 rounded-lg px-3.5 py-2.5 font-display text-sm ${selecting ? 'text-bg' : 'border-2'}`}
+        style={selecting ? { background: color } : { borderColor: color, color }}
+      >
+        {selecting ? t('join') : t('watch')}
+      </span>
+
+      {/* Countdown / draw progress along the bottom edge */}
+      <span className="absolute inset-x-0 bottom-0 h-[3px] bg-panel-2" aria-hidden>
+        <span className="block h-full transition-[width] duration-500" style={{ width: `${Math.round(progress * 100)}%`, background: color }} />
+      </span>
     </button>
   );
 }
