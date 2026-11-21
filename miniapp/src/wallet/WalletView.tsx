@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError, api, type Balances, type Money } from '../api';
-import { useI18n } from '../i18n';
+import { useI18n, type Key } from '../i18n';
 
 interface Options {
   methods: { method: 'TELEBIRR' | 'CBE_BIRR'; label: string; accountNumber: string; accountName: string }[];
@@ -65,6 +65,8 @@ export function WalletView({ wallet, initialTab = 'deposit' }: { wallet: Balance
         )}
       </section>
 
+      <PromoForm onDone={load} />
+
       <div className="grid grid-cols-2 rounded-xl border border-line bg-panel p-1 text-sm font-bold">
         {(['deposit', 'withdraw'] as const).map((k) => (
           <button key={k} type="button" onClick={() => setTab(k)} aria-pressed={tab === k} className={`rounded-lg py-2 ${tab === k ? 'bg-gold text-gold-ink' : 'text-muted'}`}>
@@ -111,6 +113,52 @@ export function WalletView({ wallet, initialTab = 'deposit' }: { wallet: Balance
         })}
       </section>
     </div>
+  );
+}
+
+function PromoForm({ onDone }: { onDone: () => void }) {
+  const { t } = useI18n();
+  const [code, setCode] = useState('');
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [sending, setSending] = useState(false);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    setMsg(null);
+    try {
+      const r = await api<{ amount: Money }>('/me/promo', { body: { code } });
+      setCode('');
+      setMsg({ ok: true, text: `🎉 ${t('promoDone', { amount: r.amount.birr })}` });
+      onDone();
+    } catch (err) {
+      const known = err instanceof ApiError && err.code.startsWith('PROMO_') ? t(err.code as Key) : null;
+      setMsg({ ok: false, text: known ?? (err instanceof ApiError ? err.message : String(err)) });
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-2 rounded-2xl border border-line bg-panel p-3">
+      <label htmlFor="promo" className="text-xs font-bold text-muted">
+        🎁 {t('promoTitle')}
+      </label>
+      <div className="flex gap-2">
+        <input
+          id="promo"
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder={t('promoPlaceholder')}
+          autoCapitalize="characters"
+          autoComplete="off"
+          maxLength={32}
+          className="min-w-0 flex-1 rounded-xl border border-line bg-bg px-3 py-2.5 text-sm font-bold uppercase tracking-wider text-ink outline-none focus:border-gold"
+        />
+        <button type="submit" disabled={sending || code.trim().length < 3} className="shrink-0 rounded-xl bg-gold px-4 text-sm font-black text-gold-ink disabled:opacity-50">
+          {t('redeem')}
+        </button>
+      </div>
+      {msg && <p className={`text-sm ${msg.ok ? 'text-win' : 'text-danger'}`}>{msg.text}</p>}
+    </form>
   );
 }
 

@@ -126,6 +126,9 @@ that never changes, use a free ngrok static domain or a named Cloudflare tunnel 
 - **Withdraw** step by step: amount → Telebirr or CBE Birr → phone number (or "use my number") → name → confirm.
 - The "What can this bot do?" text and the command list are set in both languages when the server starts.
   The picture on that screen is set by hand in @BotFather (Edit Bot → Edit Description Picture).
+- **Promo codes**: the 🎁 button or `/promo CODE` in the bot, or the box in the game's Wallet tab. Each player can
+  use a code once; the bonus goes to the play wallet (buys cards, cannot be withdrawn) and is booked as a
+  promotions cost. Limits are enforced under a row lock, so a code with 50 uses is never used 51 times.
 - Staff: `/admin` (dashboard link), `/myid`, and Approve/Reject buttons on every deposit and withdrawal.
 
 ## Staff dashboard
@@ -146,6 +149,7 @@ is written in the server window instead.
 | Players | Search, balances, totals, wallet history; block/unblock; correct a balance with a reason |
 | Rounds | Last 50 rounds: cards, stakes, prize, house share, top-up, winning cards |
 | Messages | Promo message to every player through the bot: text, optional picture, optional "Play now" button. Send a test to yourself first; progress shows while it sends (about 20 a second). |
+| Promo codes | Create codes (bonus in birr, how many players, end time, depositors only), switch them off, see who used each one |
 | Game settings | Card price, house share, guaranteed prize, countdown, ball speed, cards per player, card numbers, minimum cards, on/off. Applies from the next round. |
 
 For development with live reload: `npm run dev` in `admin/` (http://localhost:5174/admin/, proxies to :3000).

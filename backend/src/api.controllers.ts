@@ -10,6 +10,7 @@ import { AppError, CurrentUser, Public, money, type AuthUser } from './common/co
 import { APP_CONFIG, type AppConfig } from './config/config';
 import { PaymentsService, depositView, withdrawalView } from './payments/payments.service';
 import { PrismaService } from './prisma.service';
+import { PromoService } from './promo/promo.service';
 import { UsersService } from './users/users.service';
 import { WalletService } from './wallet/wallet.service';
 
@@ -20,6 +21,9 @@ class DevLoginDto {
   @Type(() => Number) @IsInt() @Min(1) telegramId!: number;
   @IsString() @Length(1, 64) firstName!: string;
   @IsOptional() @IsString() @Length(1, 32) startParam?: string;
+}
+class PromoDto {
+  @IsString() @Length(1, 40) code!: string;
 }
 class LanguageDto {
   @IsIn(['am', 'en']) language!: 'am' | 'en';
@@ -101,8 +105,17 @@ export class MeController {
     private readonly prisma: PrismaService,
     private readonly wallet: WalletService,
     private readonly users: UsersService,
+    private readonly promo: PromoService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
+
+  /** Redeems a promo code: the bonus goes to the play wallet. */
+  @Post('promo')
+  @HttpCode(HttpStatus.OK)
+  async redeem(@CurrentUser() auth: AuthUser, @Body() body: PromoDto) {
+    const r = await this.promo.redeem(auth.id, body.code);
+    return { code: r.code, amount: money(r.amountMinor), wallet: await this.wallet.balances(auth.id) };
+  }
 
   @Get()
   async me(@CurrentUser() auth: AuthUser) {

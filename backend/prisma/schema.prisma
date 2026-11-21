@@ -39,6 +39,7 @@ model User {
   cards       Card[]
   winnings    Winner[]
   deposits    Deposit[]       @relation("DepositUser")
+  promoRedemptions PromoRedemption[]
   withdrawals Withdrawal[]    @relation("WithdrawalUser")
 
   @@map("users")
@@ -292,4 +293,44 @@ model Winner {
   @@unique([roundId, cardNo])
   @@index([userId, createdAt])
   @@map("winners")
+}
+
+// ─── Promo codes ────────────────────────────────────────────────────────────
+
+model PromoCode {
+  id              String    @id @default(uuid()) @db.Uuid
+  /// What players type, stored upper-case (WELCOME50).
+  code            String    @unique @db.VarChar(32)
+  /// Bonus given to the play wallet on redeeming.
+  amountMinor     BigInt    @map("amount_minor")
+  /// How many players may use it in total. Null = no limit.
+  maxUses         Int?      @map("max_uses")
+  usedCount       Int       @default(0) @map("used_count")
+  expiresAt       DateTime? @map("expires_at") @db.Timestamptz(3)
+  /// Only players with at least one approved deposit may use it (stops new fake accounts collecting it).
+  requiresDeposit Boolean   @default(false) @map("requires_deposit")
+  isActive        Boolean   @default(true) @map("is_active")
+  note            String?   @db.VarChar(200)
+  createdById     String?   @map("created_by_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  redemptions PromoRedemption[]
+
+  @@map("promo_codes")
+}
+
+model PromoRedemption {
+  id          String   @id @default(uuid()) @db.Uuid
+  promoId     String   @map("promo_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  amountMinor BigInt   @map("amount_minor")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  promo PromoCode @relation(fields: [promoId], references: [id])
+  user  User      @relation(fields: [userId], references: [id])
+
+  /// Each player can use a code once.
+  @@unique([promoId, userId])
+  @@index([userId, createdAt])
+  @@map("promo_redemptions")
 }

@@ -16,6 +16,7 @@ import { LedgerService } from './ledger/ledger.service';
 import { NotifyModule } from './notify.service';
 import { PaymentsService } from './payments/payments.service';
 import { PrismaModule } from './prisma.service';
+import { PromoService } from './promo/promo.service';
 import { UsersService } from './users/users.service';
 import { WalletService } from './wallet/wallet.service';
 
@@ -58,6 +59,7 @@ const config = loadConfig();
     GameGateway,
     BotService,
     StaffAuthService,
+    PromoService,
   ],
 })
 export class AppModule {}

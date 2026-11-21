@@ -172,4 +172,17 @@ describe('Telegram bot (integration)', () => {
     await request(server).post('/api/admin/broadcast').set('Authorization', `Bearer ${token}`).send({ text: 'pic', imageBase64: big, playButton: false, testOnly: true }).expect(200);
     expect(sent.some((c) => c.method === 'sendPhoto')).toBe(true);
   });
+
+  it('redeems a promo code from the menu button and with /promo CODE', async () => {
+    await db.promoCode.create({ data: { code: 'BOTGIFT', amountMinor: 1500n } });
+    await db.promoCode.create({ data: { code: 'SECOND', amountMinor: 500n } });
+    let out = await say(text(TEXTS.en.btnPromo));
+    expect(out[0]).toBe(TEXTS.en.promoAsk);
+    out = await say(text('botgift'));
+    expect(out[0]).toContain('+15 birr');
+    out = await say(text('/promo botgift'));
+    expect(out[0]).toContain(TEXTS.en.promoErrors.PROMO_ALREADY_USED);
+    out = await say(text('/promo SECOND'));
+    expect(out[0]).toContain('+5 birr');
+  });
 });

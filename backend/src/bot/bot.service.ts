@@ -7,6 +7,7 @@ import { APP_CONFIG, type AppConfig } from '../config/config';
 import { NotifyService } from '../notify.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma.service';
+import { PromoService } from '../promo/promo.service';
 import { UsersService } from '../users/users.service';
 import { WalletService } from '../wallet/wallet.service';
 import { COMMANDS, TEXTS, localPhone, menuActionFor, textsFor, type BotLang } from './texts';
@@ -19,6 +20,7 @@ const BROADCAST_GAP_MS = 45;
 
 type Flow =
   | { kind: 'sms'; method: PaymentMethod; until: number }
+  | { kind: 'promo'; until: number }
   | { kind: 'withdraw'; step: 'amount' | 'method' | 'account' | 'name' | 'confirm'; until: number; amount?: bigint; method?: PaymentMethod; account?: string; name?: string };
 
 export interface BroadcastInput {
@@ -61,6 +63,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly wallet: WalletService,
     private readonly payments: PaymentsService,
     private readonly notify: NotifyService,
+    private readonly promo: PromoService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -137,6 +140,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       .text(t.btnBalance)
       .text(t.btnInvite)
       .row()
+      .text(t.btnPromo)
       .text(t.btnRules)
       .resized()
       .persistent();
@@ -239,6 +243,12 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     bot.command('invite', (ctx) => this.action(ctx, 'invite'));
     bot.command(['instructions', 'rules', 'help'], (ctx) => this.action(ctx, 'rules'));
     bot.command('cancel', (ctx) => this.action(ctx, 'cancel'));
+    bot.command('promo', async (ctx) => {
+      const code = ctx.match?.trim();
+      if (!code) return this.action(ctx, 'promo');
+      const { user } = await this.userFor(ctx);
+      if (await this.requireRegistered(ctx, user)) await this.redeemPromo(ctx, user, code);
+    });
 
     // Shows the sender's Telegram id: put it in ADMIN_TELEGRAM_IDS to become staff.
     bot.command('myid', (ctx) =>
@@ -357,6 +367,11 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
         return;
       }
 
+      if (f?.kind === 'promo') {
+        this.flows.delete(ctx.chat.id);
+        return this.redeemPromo(ctx, user, text);
+      }
+
       if (f?.kind === 'withdraw') return this.withdrawStep(ctx, user, f, text);
 
       await ctx.reply(t.unknown, { reply_markup: user.phone ? this.mainMenu(user.language) : this.phoneKeyboard(user.language) });
@@ -384,7 +399,10 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     if (!(await this.requireRegistered(ctx, user))) return;
     this.flows.delete(chatId);
 
-    if (action === 'play') {
+    if (action === 'promo') {
+      this.flows.set(chatId, { kind: 'promo', until: Date.now() + FLOW_TTL_MS });
+      await ctx.reply(t.promoAsk, { reply_markup: new Keyboard().text(t.btnCancel).resized().oneTime() });
+    } else if (action === 'play') {
       await ctx.reply(t.openGame, { reply_markup: this.playButton(user.language) });
     } else if (action === 'balance') {
       const b = await this.wallet.balances(user.id);
@@ -415,6 +433,17 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
         parse_mode: 'HTML',
         reply_markup: new Keyboard().text(t.btnCancel).resized().oneTime(),
       });
+    }
+  }
+
+  private async redeemPromo(ctx: Context, user: User, code: string) {
+    const t = textsFor(user.language);
+    try {
+      const r = await this.promo.redeem(user.id, code);
+      await ctx.reply(t.promoDone(money(r.amountMinor).birr, escape(r.code)), { parse_mode: 'HTML', reply_markup: this.mainMenu(user.language) });
+    } catch (e) {
+      const msg = e instanceof AppError ? (t.promoErrors[e.code] ?? e.message) : t.error;
+      await ctx.reply(`⚠️ ${msg}`, { reply_markup: this.mainMenu(user.language) });
     }
   }
 

@@ -28,6 +28,17 @@ const en = {
   btnLanguage: '🌐 Language',
   btnRules: '📖 How to play',
   btnCancel: '✖️ Cancel',
+  btnPromo: '🎁 Promo code',
+  promoAsk: '🎁 Type your promo code:',
+  promoDone: (amount: string, code: string) => `🎉 Promo code <b>${code}</b> accepted: <b>+${amount} birr</b> added to your play wallet.`,
+  promoErrors: {
+    PROMO_NOT_FOUND: 'That promo code does not exist. Check the spelling and try again.',
+    PROMO_OFF: 'This promo code is no longer active.',
+    PROMO_EXPIRED: 'This promo code has expired.',
+    PROMO_USED_UP: 'This promo code has been used by the maximum number of players.',
+    PROMO_ALREADY_USED: 'You have already used this promo code.',
+    PROMO_NEEDS_DEPOSIT: 'This promo code is for players who have made a deposit. Deposit first, then try again.',
+  } as Record<string, string>,
   openGame: 'Open the game and pick your cards before the countdown ends:',
   playNow: '🎮 Play now',
   balance: (main: string, play: string, hold: string | null) =>
@@ -116,6 +127,17 @@ const am: Texts = {
   btnLanguage: '🌐 ቋንቋ',
   btnRules: '📖 መመሪያ',
   btnCancel: '✖️ ሰርዝ',
+  btnPromo: '🎁 ፕሮሞ ኮድ',
+  promoAsk: '🎁 የፕሮሞ ኮድዎን ይጻፉ፦',
+  promoDone: (amount, code) => `🎉 ፕሮሞ ኮድ <b>${code}</b> ተቀባይነት አግኝቷል፦ <b>+${amount} ብር</b> ወደ መጫወቻ ሂሳብዎ ገብቷል።`,
+  promoErrors: {
+    PROMO_NOT_FOUND: 'ይህ ፕሮሞ ኮድ የለም። አጻጻፉን አረጋግጠው እንደገና ይሞክሩ።',
+    PROMO_OFF: 'ይህ ፕሮሞ ኮድ ከአሁን በኋላ አይሰራም።',
+    PROMO_EXPIRED: 'የዚህ ፕሮሞ ኮድ ጊዜ አልፏል።',
+    PROMO_USED_UP: 'ይህ ፕሮሞ ኮድ በተፈቀደው የተጫዋቾች ብዛት ተጠቅሟል።',
+    PROMO_ALREADY_USED: 'ይህን ፕሮሞ ኮድ አስቀድመው ተጠቅመውበታል።',
+    PROMO_NEEDS_DEPOSIT: 'ይህ ፕሮሞ ኮድ ገንዘብ ላስገቡ ተጫዋቾች ነው። መጀመሪያ ገንዘብ አስገብተው እንደገና ይሞክሩ።',
+  },
   openGame: 'ጨዋታውን ከፍተው ሰዓቱ ሳያልቅ ካርቴላ ይምረጡ፦',
   playNow: '🎮 አሁን ይጫወቱ',
   balance: (main, play, hold) =>
@@ -177,7 +199,7 @@ export const TEXTS: Record<BotLang, Texts> = { en, am };
 export const textsFor = (lang: string | null | undefined): Texts => TEXTS[lang === 'en' ? 'en' : 'am'];
 
 /** Menu buttons in both languages, so a tap works whatever language the keyboard was drawn in. */
-export type MenuAction = 'play' | 'deposit' | 'withdraw' | 'balance' | 'invite' | 'language' | 'rules' | 'cancel';
+export type MenuAction = 'play' | 'deposit' | 'withdraw' | 'balance' | 'invite' | 'language' | 'rules' | 'cancel' | 'promo';
 const ACTION_KEYS: Record<MenuAction, keyof Texts> = {
   play: 'btnPlay',
   deposit: 'btnDeposit',
@@ -187,6 +209,7 @@ const ACTION_KEYS: Record<MenuAction, keyof Texts> = {
   language: 'btnLanguage',
   rules: 'btnRules',
   cancel: 'btnCancel',
+  promo: 'btnPromo',
 };
 export function menuActionFor(text: string): MenuAction | null {
   for (const [action, key] of Object.entries(ACTION_KEYS) as [MenuAction, keyof Texts][]) {
@@ -204,6 +227,7 @@ export const COMMANDS: Record<BotLang, { command: string; description: string }[
     { command: 'withdraw', description: 'Withdraw winnings' },
     { command: 'balance', description: 'My balance' },
     { command: 'invite', description: 'Invite friends' },
+    { command: 'promo', description: 'Use a promo code' },
     { command: 'instructions', description: 'How to play' },
     { command: 'language', description: 'Language / ቋንቋ' },
     { command: 'menu', description: 'Show the menu buttons' },
@@ -215,6 +239,7 @@ export const COMMANDS: Record<BotLang, { command: string; description: string }[
     { command: 'withdraw', description: 'ገንዘብ አውጣ' },
     { command: 'balance', description: 'ቀሪ ሂሳብ' },
     { command: 'invite', description: 'ጓደኛ ጋብዝ' },
+    { command: 'promo', description: 'ፕሮሞ ኮድ ተጠቀም' },
     { command: 'instructions', description: 'መመሪያ' },
     { command: 'language', description: 'ቋንቋ / Language' },
     { command: 'menu', description: 'የማውጫ ቁልፎችን አሳይ' },

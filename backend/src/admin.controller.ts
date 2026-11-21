@@ -4,6 +4,9 @@ import { StaffAuthService } from './auth/staff-auth.service';
 import { BotService } from './bot/bot.service';
 import { MAX_CARD_POOL } from './bingo/game.service';
 import { WalletService } from './wallet/wallet.service';
+import { CODE_PATTERN, normalizeCode, promoView } from './promo/promo.service';
+import { randomInt } from 'node:crypto';
+import { IsDateString } from 'class-validator';
 import { AccountType, DepositStatus, Prisma, TxType, WithdrawalStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Max, Min } from 'class-validator';
@@ -35,6 +38,18 @@ class AdjustDto {
   /** Whole birr. Negative takes money away. */
   @Matches(/^-?\d{1,7}$/, { message: 'Amount is a whole number of birr, e.g. 50 or -50' }) amountBirr!: string;
   @IsString() @Length(3, 200) reason!: string;
+}
+class PromoCreateDto {
+  /** Leave empty to get a random code. */
+  @IsOptional() @IsString() @Length(0, 40) code?: string;
+  @Type(() => Number) @IsInt() @Min(1) @Max(100_000) amountBirr!: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1_000_000) maxUses?: number;
+  @IsOptional() @IsDateString() expiresAt?: string;
+  @IsBoolean() requiresDeposit!: boolean;
+  @IsOptional() @IsString() @Length(0, 200) note?: string;
+}
+class PromoUpdateDto {
+  @IsOptional() @IsBoolean() isActive?: boolean;
 }
 class BroadcastDto {
   @IsString() @Length(1, 4000) text!: string;
@@ -301,6 +316,57 @@ export class AdminController {
       );
     });
     return this.wallet.balances(id);
+  }
+
+  @Get('promos')
+  async promos() {
+    const rows = await this.prisma.promoCode.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+    return rows.map(promoView);
+  }
+
+  @Post('promos')
+  async createPromo(@CurrentUser() staff: AuthUser, @Body() body: PromoCreateDto) {
+    const ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
+    const code = body.code?.trim() ? normalizeCode(body.code) : Array.from({ length: 8 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('');
+    if (!CODE_PATTERN.test(code)) {
+      throw new AppError(HttpStatus.BAD_REQUEST, 'BAD_CODE', 'Use 3 to 32 letters, digits, - or _ (no spaces).');
+    }
+    if (body.expiresAt && new Date(body.expiresAt) <= new Date()) {
+      throw new AppError(HttpStatus.BAD_REQUEST, 'BAD_EXPIRY', 'The end time must be in the future.');
+    }
+    try {
+      const p = await this.prisma.promoCode.create({
+        data: {
+          code,
+          amountMinor: BigInt(body.amountBirr) * 100n,
+          maxUses: body.maxUses ?? null,
+          expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+          requiresDeposit: body.requiresDeposit,
+          note: body.note?.trim() || null,
+          createdById: staff.id,
+        },
+      });
+      return promoView(p);
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P2002') throw new AppError(HttpStatus.CONFLICT, 'CODE_EXISTS', `The code ${code} already exists.`);
+      throw e;
+    }
+  }
+
+  @Patch('promos/:id')
+  async updatePromo(@Param('id') id: string, @Body() body: PromoUpdateDto) {
+    return promoView(await this.prisma.promoCode.update({ where: { id }, data: { isActive: body.isActive } }));
+  }
+
+  @Get('promos/:id/redemptions')
+  async redemptions(@Param('id') id: string) {
+    const rows = await this.prisma.promoRedemption.findMany({
+      where: { promoId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: { user: { select: { id: true, firstName: true, username: true } } },
+    });
+    return rows.map((r) => ({ at: r.createdAt, amount: money(r.amountMinor), player: { id: r.user.id, name: r.user.firstName, username: r.user.username } }));
   }
 
   @Get('broadcast')
