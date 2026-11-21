@@ -46,7 +46,9 @@ export class UsersService {
 
     const code = referralCodeFrom(startParam);
     const referrer = code ? await this.prisma.user.findUnique({ where: { referralCode: code } }) : null;
-    const language = tg.language_code === 'en' ? 'en' : tg.language_code === 'om' ? 'om' : 'am';
+    // Everyone starts in Amharic (most phones are set to English, so the phone's language is not used).
+    // Players can switch to Afaan Oromoo or English in the bot or the game.
+    const language = 'am';
     for (let attempt = 0; ; attempt++) {
       try {
         const user = await this.ledger.withTx(async (tx) => {

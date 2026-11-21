@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } f
 import { PaymentMethod, Role } from '@prisma/client';
 import type { Deposit, User, Withdrawal } from '@prisma/client';
 import { Bot, InlineKeyboard, InputFile, Keyboard, type Context } from 'grammy';
+import type { LanguageCode } from 'grammy/types';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppError, money } from '../common/common';
@@ -91,16 +92,17 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private async connect(bot: Bot, attempt = 1): Promise<void> {
     try {
-      // Commands and the "What can this bot do?" text, in English (default) and Amharic.
-      await bot.api.setMyCommands(COMMANDS.en);
-      await bot.api.setMyCommands(COMMANDS.am, { language_code: 'am' });
-      await bot.api.setMyCommands(COMMANDS.om, { language_code: 'om' });
-      await bot.api.setMyDescription(TEXTS.en.description);
-      await bot.api.setMyDescription(TEXTS.am.description, { language_code: 'am' });
-      await bot.api.setMyDescription(TEXTS.om.description, { language_code: 'om' });
-      await bot.api.setMyShortDescription(TEXTS.en.shortDescription);
-      await bot.api.setMyShortDescription(TEXTS.am.shortDescription, { language_code: 'am' });
-      await bot.api.setMyShortDescription(TEXTS.om.shortDescription, { language_code: 'om' });
+      // Commands and the "What can this bot do?" text in Amharic for everyone, whatever language the phone
+      // uses. Players who chose another language in the bot get its texts in their messages.
+      await bot.api.setMyCommands(COMMANDS.am);
+      await bot.api.setMyDescription(TEXTS.am.description);
+      await bot.api.setMyShortDescription(TEXTS.am.shortDescription);
+      // Remove the per-language versions set by earlier versions, so the Amharic default shows everywhere.
+      for (const language_code of ['am', 'om', 'en'] as LanguageCode[]) {
+        await bot.api.deleteMyCommands({ language_code }).catch(() => undefined);
+        await bot.api.setMyDescription('', { language_code }).catch(() => undefined);
+        await bot.api.setMyShortDescription('', { language_code }).catch(() => undefined);
+      }
       // The button next to the message box opens the command list ("Menu"); the game opens from the
       // 🎮 menu keyboard button and the Play now buttons.
       await bot.api.setChatMenuButton({ menu_button: { type: 'commands' } });

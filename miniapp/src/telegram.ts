@@ -20,7 +20,6 @@ const tg = (): TgWebApp | undefined => (window as unknown as { Telegram?: { WebA
 export const telegram = {
   /** Signed data proving who the user is. Empty when opened outside Telegram. */
   initData: () => tg()?.initData ?? '',
-  languageHint: () => tg()?.initDataUnsafe?.user?.language_code,
   init() {
     const app = tg();
     if (!app) return;

@@ -42,8 +42,8 @@ export default function App() {
     void signIn();
   }, [signIn]);
 
-  const hint = telegram.languageHint();
-  const fromUser = boot.kind === 'ready' ? boot.user.language : hint;
+  // Amharic unless the player chose another language.
+  const fromUser = boot.kind === 'ready' ? boot.user.language : 'am';
   const lang: Lang = fromUser === 'en' || fromUser === 'om' ? fromUser : 'am';
   return (
     <I18nProvider key={boot.kind === 'ready' ? boot.user.id : 'anon'} initial={lang}>
