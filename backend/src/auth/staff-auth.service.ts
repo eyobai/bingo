@@ -57,6 +57,7 @@ export class StaffAuthService {
     }
     const user = await this.staff(telegramId);
     if (!user) {
+      this.logger.warn(`Sign-in code asked for ${telegramId}, which is not staff (not in ADMIN_TELEGRAM_IDS) or is blocked. Nothing sent.`);
       // Same answer as success, so the form does not reveal who is staff.
       return { sent: true, via: 'telegram' };
     }
