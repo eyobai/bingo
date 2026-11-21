@@ -326,7 +326,11 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     });
 
     bot.callbackQuery(/^(dok|dno|wok|wno):([0-9a-f-]{36})$/, async (ctx) => {
-      const staff = await this.prisma.user.findUnique({ where: { telegramId: BigInt(ctx.from.id) } });
+      // Someone listed in ADMIN_TELEGRAM_IDS is staff even if they have not opened the bot since a database reset:
+      // create or upgrade their account first.
+      const staff = this.config.adminTelegramIds.has(String(ctx.from.id))
+        ? (await this.users.fromTelegram(ctx.from)).user
+        : await this.prisma.user.findUnique({ where: { telegramId: BigInt(ctx.from.id) } });
       if (staff?.role !== Role.ADMIN) return ctx.answerCallbackQuery({ text: 'Staff only.' });
       const [, action, id] = ctx.match;
       try {
