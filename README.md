@@ -11,6 +11,18 @@ miniapp/   React + Vite + Tailwind, opened from the bot's "Play" button
 admin/     React + Vite + Tailwind staff dashboard, served at /admin/
 ```
 
+## Shortcuts from the top folder
+
+From the `bingo` folder itself:
+
+| Command | Does |
+| --- | --- |
+| `npm run install:all` | Installs backend, game screen and dashboard |
+| `npm run build` | Builds the game screen and the dashboard |
+| `npm start` | Starts the server (same as `npm run start:dev` in `backend`) |
+| `npm run sim:players` | Starts the sample players (options after `--`, e.g. `npm run sim:players -- --players 20`) |
+| `npm test` | Runs all backend tests |
+
 ## Run locally
 
 Needs Node.js 22 and PostgreSQL 16. The easiest way to get the database is Docker:
