@@ -1,0 +1,65 @@
+# Production: database + app + Caddy (https with automatic certificates). See DEPLOY.md.
+# Run from this folder:  docker compose up -d --build
+name: bingo
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bingo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: bingo
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bingo -d bingo']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # No ports published: only the app can reach the database.
+
+  app:
+    build:
+      context: ..
+      args:
+        BRAND_NAME: ${BRAND_NAME:-Bingo}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: postgresql://bingo:${POSTGRES_PASSWORD}@db:5432/bingo?connection_limit=10&pool_timeout=30
+      MINIAPP_URL: https://${DOMAIN:?Set DOMAIN in deploy/.env}
+      CORS_ORIGINS: https://${DOMAIN}
+      DEV_LOGIN: 'false'
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

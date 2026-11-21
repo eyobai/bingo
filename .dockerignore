@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.env
+**/coverage
+**/*.tsbuildinfo
+.git
+deploy/.env
+deploy/backups

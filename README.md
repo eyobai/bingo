@@ -112,7 +112,12 @@ Players can use it while your computer, the server and the tunnel are running. A
 address every time it starts: update `MINIAPP_URL` and restart the server when that happens. For an address
 that never changes, use a free ngrok static domain or a named Cloudflare tunnel on your own domain.
 
-## Going live with Telegram
+## Going live
+
+See **[DEPLOY.md](DEPLOY.md)** for running it on a DigitalOcean Droplet with your own domain, automatic https and
+nightly backups.
+
+## Going live with Telegram (other hosts)
 
 1. Create the bot with [@BotFather](https://t.me/BotFather) (`/newbot`). Put the token in `BOT_TOKEN` and the
    username in `BOT_USERNAME`.
