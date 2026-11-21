@@ -26,7 +26,7 @@ class PromoDto {
   @IsString() @Length(1, 40) code!: string;
 }
 class LanguageDto {
-  @IsIn(['am', 'en']) language!: 'am' | 'en';
+  @IsIn(['am', 'en', 'om']) language!: 'am' | 'en' | 'om';
 }
 class BuyCardsDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(10) @IsInt({ each: true }) cardNos!: number[];

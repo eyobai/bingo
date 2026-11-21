@@ -115,13 +115,17 @@ that never changes, use a free ngrok static domain or a named Cloudflare tunnel 
 
 ## The bot
 
-- **First /start**: choose አማርኛ or English, then share the phone number with one button (only the player's own
+- **First /start**: choose አማርኛ, Afaan Oromoo or English (the Afaan Oromoo texts need a native speaker's review), then share the phone number with one button (only the player's own
   number is accepted). Registering gives the welcome gift (`WELCOME_BONUS_BIRR`, play wallet, once).
 - **Playing needs a registered phone** (`REQUIRE_PHONE=true`, the default). Developer and sample accounts get a
   made-up number automatically.
 - **Menu keyboard** under the message box: Play, Language, Deposit, Withdraw, Balance, Invite friends, How to play.
   The same actions are in Telegram's Menu as `/play`, `/deposit`, `/withdraw`, `/balance`, `/invite`,
   `/instructions`, `/language`, `/menu`.
+- **How to play** sends a "4 ways to win" picture (`backend/assets/rules-patterns.png`) and then the detailed rules.
+- **Balance**: main, bonus, total, withdrawable and the minimum withdrawal.
+- **Invite friends**: friends who deposited, friends still to deposit, total earned and progress toward
+  `REFERRAL_MAX_FRIENDS` (default 30; after that, friends can still join but earn no reward).
 - **Deposit**: choose Telebirr or CBE Birr, send money, paste the SMS.
 - **Withdraw** step by step: amount → Telebirr or CBE Birr → phone number (or "use my number") → name → confirm.
 - The "What can this bot do?" text and the command list are set in both languages when the server starts.

@@ -16,13 +16,13 @@ export function Header({ user, wallet }: { user: User; wallet: Balances | null }
       </div>
       <div className="min-w-0 flex-1 truncate text-center font-display text-xl tracking-wide text-gold">{BRAND}</div>
       <div className="flex shrink-0 rounded-full border border-line bg-panel p-0.5 text-[11px] font-bold">
-        {(['am', 'en'] as const).map((l) => (
+        {(['am', 'om', 'en'] as const).map((l) => (
           <button
             key={l}
             type="button"
             onClick={() => setLang(l)}
             aria-pressed={lang === l}
-            className={`rounded-full px-2.5 py-1 ${lang === l ? 'bg-gold text-gold-ink' : 'text-muted'}`}
+            className={`rounded-full px-2 py-1 ${lang === l ? 'bg-gold text-gold-ink' : 'text-muted'}`}
           >
             {l.toUpperCase()}
           </button>
@@ -34,8 +34,8 @@ export function Header({ user, wallet }: { user: User; wallet: Balances | null }
 
 function WalletPill({ label, value, tone }: { label: string; value?: string; tone: string }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-full border border-line bg-panel px-2 py-0.5 text-[10px] leading-tight">
-      <span className={`font-bold uppercase tracking-wide ${tone}`}>{label}</span>
+    <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-panel px-2 py-0.5 text-[10px] leading-tight">
+      <span className={`min-w-0 truncate font-bold uppercase tracking-wide ${tone}`}>{label}</span>
       <span className="font-bold tabular-nums text-ink">{value ?? '–'}</span>
       <span className="text-muted">ETB</span>
     </div>

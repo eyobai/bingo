@@ -28,6 +28,8 @@ export const envSchema = Joi.object({
   FIRST_DEPOSIT_BONUS_PERCENT: Joi.number().integer().min(0).max(100).default(20),
   FIRST_DEPOSIT_BONUS_MAX_BIRR: Joi.number().integer().min(0).default(200),
   REFERRAL_BONUS_BIRR: Joi.number().integer().min(0).default(10),
+  /** A player earns the invite reward for at most this many friends. 0 = no limit. */
+  REFERRAL_MAX_FRIENDS: Joi.number().integer().min(0).default(30),
   WELCOME_BONUS_BIRR: Joi.number().integer().min(0).default(0),
 
   TELEBIRR_ACCOUNT: Joi.string().allow('').default(''),
@@ -63,6 +65,7 @@ export interface AppConfig {
     firstDepositBonusPercent: number;
     firstDepositBonusMaxMinor: bigint;
     referralBonusMinor: bigint;
+    referralMaxFriends: number;
     welcomeBonusMinor: bigint;
   };
   paymentAccounts: { TELEBIRR: { account: string; name: string }; CBE_BIRR: { account: string; name: string } };
@@ -103,6 +106,7 @@ export function buildConfig(env: Record<string, any>): AppConfig {
       firstDepositBonusPercent: env.FIRST_DEPOSIT_BONUS_PERCENT,
       firstDepositBonusMaxMinor: birr(env.FIRST_DEPOSIT_BONUS_MAX_BIRR),
       referralBonusMinor: birr(env.REFERRAL_BONUS_BIRR),
+      referralMaxFriends: env.REFERRAL_MAX_FRIENDS,
       welcomeBonusMinor: birr(env.WELCOME_BONUS_BIRR),
     },
     paymentAccounts: {

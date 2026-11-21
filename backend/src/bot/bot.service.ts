@@ -2,6 +2,8 @@ import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } f
 import { PaymentMethod, Role } from '@prisma/client';
 import type { Deposit, User, Withdrawal } from '@prisma/client';
 import { Bot, InlineKeyboard, InputFile, Keyboard, type Context } from 'grammy';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { AppError, money } from '../common/common';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { NotifyService } from '../notify.service';
@@ -92,10 +94,13 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       // Commands and the "What can this bot do?" text, in English (default) and Amharic.
       await bot.api.setMyCommands(COMMANDS.en);
       await bot.api.setMyCommands(COMMANDS.am, { language_code: 'am' });
+      await bot.api.setMyCommands(COMMANDS.om, { language_code: 'om' });
       await bot.api.setMyDescription(TEXTS.en.description);
       await bot.api.setMyDescription(TEXTS.am.description, { language_code: 'am' });
+      await bot.api.setMyDescription(TEXTS.om.description, { language_code: 'om' });
       await bot.api.setMyShortDescription(TEXTS.en.shortDescription);
       await bot.api.setMyShortDescription(TEXTS.am.shortDescription, { language_code: 'am' });
+      await bot.api.setMyShortDescription(TEXTS.om.shortDescription, { language_code: 'om' });
       if (this.config.bot.miniAppUrl.startsWith('https://')) {
         await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Play', web_app: { url: this.config.bot.miniAppUrl } } });
         this.logger.log(`Play button opens ${this.config.bot.miniAppUrl}`);
@@ -151,7 +156,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private languageKeyboard() {
-    return new InlineKeyboard().text('🇪🇹 አማርኛ', 'lang:am').text('🇬🇧 English', 'lang:en');
+    return new InlineKeyboard().text('🇪🇹 አማርኛ', 'lang:am').row().text('🇪🇹 Afaan Oromoo', 'lang:om').row().text('🇬🇧 English', 'lang:en');
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -202,7 +207,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
 
     bot.command('language', (ctx) => ctx.reply(TEXTS.en.chooseLanguage, { reply_markup: this.languageKeyboard() }));
 
-    bot.callbackQuery(/^lang:(am|en)$/, async (ctx) => {
+    bot.callbackQuery(/^lang:(am|en|om)$/, async (ctx) => {
       const lang = ctx.match[1] as BotLang;
       const { user } = await this.userFor(ctx);
       await this.users.setLanguage(user.id, lang);
@@ -393,6 +398,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       return;
     }
     if (action === 'rules') {
+      await this.sendRulesPicture(ctx, t.rulesCaption);
       await ctx.reply(t.rules, { parse_mode: 'HTML', reply_markup: this.playButton(user.language) });
       return;
     }
@@ -405,13 +411,32 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     } else if (action === 'play') {
       await ctx.reply(t.openGame, { reply_markup: this.playButton(user.language) });
     } else if (action === 'balance') {
-      const b = await this.wallet.balances(user.id);
-      await ctx.reply(t.balance(b.main.birr, b.play.birr, b.pendingWithdrawal.minor !== '0' ? b.pendingWithdrawal.birr : null), { parse_mode: 'HTML' });
+      const b = await this.wallet.balancesMinor(user.id);
+      await ctx.reply(
+        t.balance({
+          main: money(b.main).birr,
+          play: money(b.play).birr,
+          total: money(b.main + b.play).birr,
+          withdrawable: money(b.main).birr,
+          min: money(this.config.money.withdrawMinMinor).birr,
+          hold: b.hold > 0n ? money(b.hold).birr : null,
+        }),
+        { parse_mode: 'HTML' },
+      );
     } else if (action === 'invite') {
       const link = `https://t.me/${this.config.bot.username || ctx.me.username}?start=ref_${user.referralCode}`;
-      const count = await this.prisma.user.count({ where: { referredById: user.id } });
+      const stats = await this.users.referralStats(user.id);
       const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(t.shareText)}`;
-      await ctx.reply(t.invite(money(this.config.money.referralBonusMinor).birr, link, count), {
+      await ctx.reply(
+        t.invite({
+          reward: money(this.config.money.referralBonusMinor).birr,
+          link,
+          deposited: stats.deposited,
+          waiting: stats.waiting,
+          earned: money(stats.earnedMinor).birr,
+          max: this.config.money.referralMaxFriends,
+        }),
+        {
         parse_mode: 'HTML',
         reply_markup: new InlineKeyboard().url(t.shareButton, share),
       });
@@ -433,6 +458,19 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
         parse_mode: 'HTML',
         reply_markup: new Keyboard().text(t.btnCancel).resized().oneTime(),
       });
+    }
+  }
+
+  private rulesPhotoId?: string;
+  /** Sends the "4 ways to win" picture. Uploaded once; Telegram's copy is reused after that. */
+  private async sendRulesPicture(ctx: Context, caption: string) {
+    const file = join(__dirname, '..', '..', 'assets', 'rules-patterns.png');
+    if (!this.rulesPhotoId && !existsSync(file)) return;
+    try {
+      const msg = await ctx.replyWithPhoto(this.rulesPhotoId ?? new InputFile(file), { caption });
+      this.rulesPhotoId ??= msg.photo?.at(-1)?.file_id;
+    } catch (e) {
+      this.logger.warn(`Rules picture not sent: ${(e as Error).message}`);
     }
   }
 

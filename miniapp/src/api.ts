@@ -14,7 +14,7 @@ export interface User {
   id: string;
   firstName: string;
   username: string | null;
-  language: 'am' | 'en';
+  language: 'am' | 'en' | 'om';
   role: 'PLAYER' | 'ADMIN';
   referralCode: string;
   inviteLink: string | null;

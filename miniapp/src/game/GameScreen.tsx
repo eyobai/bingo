@@ -104,12 +104,12 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
             {state.round.players} {t('players')} · {state.round.cardsSold} {t('cards')}
           </span>
         </div>
-        <div className="relative h-20 w-32 shrink-0" aria-hidden>
+        <div className="relative hidden h-20 w-32 shrink-0 min-[400px]:block" aria-hidden>
           {DECOR.map((d) => (
             <GoldBall key={d.n} n={d.n} style={{ left: d.x, top: d.y, animationDelay: `${(d.n % 7) * 0.2}s` }} />
           ))}
         </div>
-        <div className="z-10 flex flex-col items-end gap-0.5 text-right">
+        <div className="z-10 flex shrink-0 flex-col items-end gap-0.5 text-right">
           <span className="text-[10px] font-bold uppercase tracking-widest text-muted">{t('startingIn')}</span>
           <Countdown ms={left} />
         </div>

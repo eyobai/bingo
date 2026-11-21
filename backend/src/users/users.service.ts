@@ -46,7 +46,7 @@ export class UsersService {
 
     const code = referralCodeFrom(startParam);
     const referrer = code ? await this.prisma.user.findUnique({ where: { referralCode: code } }) : null;
-    const language = tg.language_code === 'en' ? 'en' : 'am';
+    const language = tg.language_code === 'en' ? 'en' : tg.language_code === 'om' ? 'om' : 'am';
     for (let attempt = 0; ; attempt++) {
       try {
         const user = await this.ledger.withTx(async (tx) => {
@@ -95,7 +95,20 @@ export class UsersService {
     });
   }
 
-  setLanguage(userId: string, language: 'am' | 'en') {
+  /** Invite numbers for /invite: rewarded friends, friends still to deposit, and bonus earned so far. */
+  async referralStats(userId: string) {
+    const [deposited, invited, earned] = await Promise.all([
+      this.prisma.user.count({ where: { referredById: userId, deposits: { some: { status: 'APPROVED' } } } }),
+      this.prisma.user.count({ where: { referredById: userId } }),
+      this.prisma.ledgerEntry.aggregate({
+        where: { account: { userId, type: AccountType.USER_PLAY }, transaction: { idempotencyKey: { startsWith: 'referral:' } } },
+        _sum: { amountMinor: true },
+      }),
+    ]);
+    return { deposited, waiting: invited - deposited, earnedMinor: earned._sum.amountMinor ?? 0n };
+  }
+
+  setLanguage(userId: string, language: 'am' | 'en' | 'om') {
     return this.prisma.user.update({ where: { id: userId }, data: { language } });
   }
 }

@@ -42,7 +42,9 @@ export default function App() {
     void signIn();
   }, [signIn]);
 
-  const lang: Lang = boot.kind === 'ready' ? boot.user.language : telegram.languageHint() === 'en' ? 'en' : 'am';
+  const hint = telegram.languageHint();
+  const fromUser = boot.kind === 'ready' ? boot.user.language : hint;
+  const lang: Lang = fromUser === 'en' || fromUser === 'om' ? fromUser : 'am';
   return (
     <I18nProvider key={boot.kind === 'ready' ? boot.user.id : 'anon'} initial={lang}>
       {boot.kind === 'ready' ? (

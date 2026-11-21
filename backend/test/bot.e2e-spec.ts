@@ -117,7 +117,19 @@ describe('Telegram bot (integration)', () => {
     out = await say(text(TEXTS.en.btnInvite));
     expect(out[0]).toContain('https://t.me/testbingo_bot?start=ref_');
     out = await say(text(TEXTS.en.btnRules));
-    expect(out[0]).toContain('How to play');
+    expect(sent[0].method).toBe('sendPhoto'); // the "4 ways to win" picture first
+    expect(sent[0].payload.caption).toBe(TEXTS.en.rulesCaption);
+    expect(out[0]).toContain('Ways to win');
+
+    // Afaan Oromoo: menu buttons and messages follow the choice.
+    await say(text('/language'));
+    expect(lastKeyboard().inline_keyboard.flat().map((b: any) => b.callback_data)).toEqual(['lang:am', 'lang:om', 'lang:en']);
+    out = await say(tap('lang:om'));
+    expect(out).toContain(TEXTS.om.languageSet);
+    expect(lastKeyboard().keyboard.flat().map((b: any) => b.text)).toContain(TEXTS.om.btnWithdraw);
+    out = await say(text(TEXTS.om.btnBalance));
+    expect(out[0]).toContain('HAFTEE');
+    await say(tap('lang:en'));
   });
 
   it('takes a deposit by SMS, then withdraws step by step', async () => {
@@ -184,5 +196,29 @@ describe('Telegram bot (integration)', () => {
     expect(out[0]).toContain(TEXTS.en.promoErrors.PROMO_ALREADY_USED);
     out = await say(text('/promo SECOND'));
     expect(out[0]).toContain('+5 birr');
+  });
+
+  it('shows a full balance summary and invite stats, and stops invite rewards at the limit', async () => {
+    let out = await say(text(TEXTS.en.btnBalance));
+    expect(out[0]).toMatch(/Main wallet:.*Bonus wallet:.*Total:.*Withdrawable:.*Minimum withdrawal: 100 birr/s);
+
+    // Two friends join through the invite link; the limit in tests is 1 rewarded friend.
+    const me = await db.user.findUniqueOrThrow({ where: { telegramId: BigInt(PLAYER) } });
+    const server = app.getHttpServer();
+    const staff = (await request(server).post('/api/auth/dev').send({ telegramId: 1, firstName: 'Staff' })).body.token;
+    for (const [i, id] of [70001, 70002].entries()) {
+      const t = (await request(server).post('/api/auth/dev').send({ telegramId: id, firstName: `Friend ${i}`, startParam: `ref_${me.referralCode}` })).body.token;
+      const sms = `Dear F You have transferred ETB 100.00 to ABEBE KEBEDE (2519****0000) on 21/11/2026 10:00:00. Your transaction number is FRIEND000${i}.`;
+      const d = (await request(server).post('/api/payments/deposits').set('Authorization', `Bearer ${t}`).send({ method: 'TELEBIRR', smsText: sms })).body;
+      await request(server).post(`/api/admin/deposits/${d.id}/approve`).set('Authorization', `Bearer ${staff}`).send({}).expect(200);
+    }
+    await request(server).post('/api/auth/dev').send({ telegramId: 70003, firstName: 'Friend 3', startParam: `ref_${me.referralCode}` });
+
+    out = await say(text(TEXTS.en.btnInvite));
+    expect(out[0]).toContain('Friends who deposited: <b>2</b>');
+    expect(out[0]).toContain('Waiting for first deposit: <b>1</b>');
+    expect(out[0]).toContain('Total earned: <b>10 birr</b>'); // only the first friend is rewarded
+    expect(out[0]).toContain('Progress: <b>1 / 1</b>');
+    expect(out[0]).toContain('You reached the limit');
   });
 });

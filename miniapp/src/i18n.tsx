@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 
-export type Lang = 'am' | 'en';
+export type Lang = 'am' | 'en' | 'om';
 
 const en = {
   playWallet: 'Play wallet',
@@ -192,8 +192,104 @@ const am: Dict = {
   soundOff: 'ድምፅ አጥፋ',
 };
 
+
+/** Afaan Oromoo. Should be checked by a native speaker before launch. */
+const om: Dict = {
+  playWallet: 'Waaleetii boonasii',
+  mainWallet: 'Waaleetii ijoo',
+  events: 'Taateewwan',
+  eventsTitle: 'Dhiyootti',
+  eventsBody: 'Boonasii gurguddaa eegaa!',
+  jackpot: 'Badhaasa',
+  startingIn: 'Jalqabuuf',
+  selectCards: 'Kaarteelaa filadhu',
+  yourCards: 'Kaarteelaa kee',
+  tapToPick: "Kaarteelaa fudhachuuf lakkoofsa tuqi. Sa'aatiin osoo hin xumuramin deebisuuf irra deebi'ii tuqi.",
+  noCardsYet: 'Kaarteelaan hin jiru. Lakkoofsa hanga {max} armaan olii filadhu.',
+  gameRound: 'Marsaa',
+  live: 'Kallattii',
+  players: 'taphattoota',
+  cards: 'kaarteelaa',
+  prizePool: 'Badhaasa',
+  trackNumbers: 'Lakkoofsota waamaman',
+  auto: 'Ofumaan',
+  manual: 'Harkaan',
+  autoHelp: "Kaarteelaan kee ofumaan mallattaa'a.",
+  manualHelp: "Lakkoofsota waamaman tuqi. Mo'ichi haala kamiinuu ofumaan argama.",
+  roundInProgress: 'Marsaan itti fufaa jira…',
+  waitNext: 'Maaloo marsaa itti aanu eegi!',
+  grandWinner: "Mo'ataa guddaa",
+  winners: "mo'attoota",
+  winnerIs: "Mo'ataan",
+  ticket: 'Kaarteelaa',
+  totalWinners: "Mo'attoota waliigalaa",
+  prizePerWinner: 'Tokkoon tokkoon',
+  nextRoundIn: 'Marsaan itti aanu sekondii {s} keessatti',
+  youWon: "Qarshii {amount} mo'atteetta!",
+  notEnough: 'Marsaa kana taphattoonni gahaan hin jiran',
+  refunded: "Maallaqni kee deebi'eera. Marsaan haaraan jalqabaa jira.",
+  needMoney: 'Maallaqni gahaan hin jiru. Itti fufuuf maallaqa galchi.',
+  addMoney: 'Maallaqa galchi',
+  game: 'Tapha',
+  wallet: 'Waaleetii',
+  profile: 'Profaayilii',
+  total: 'Haftee waliigalaa',
+  pendingWithdrawal: 'Kaffalamaa jira',
+  deposit: 'Galchi',
+  withdraw: 'Baasi',
+  history: 'Seenaa',
+  depositHow: 'Maallaqa herrega armaan gadiitti ergi, achiis SMS mirkaneessaa guutuu as maxxansi.',
+  account: 'Herrega',
+  name: 'Maqaa',
+  minimum: 'Xiqqaate',
+  pasteSms: 'SMS as maxxansi',
+  submit: 'Ergi',
+  depositSent: "Nu gaheera. Kaffaltiin kee mirkanaa'aa jira; yeroo galu bot keessatti ergaan siif dhufa.",
+  firstBonus: 'Boonasii galchii jalqabaa: {p}%',
+  withdrawTo: 'Gara',
+  phoneNumber: 'Lakkoofsa bilbilaa',
+  accountName: 'Maqaa herregaa',
+  amountBirr: 'Hamma (qarshii)',
+  withdrawSent: 'Gaaffiin ergameera. Hojjettoonni maallaqa siif ergu; bot keessatti ergaan siif dhufa.',
+  noHistory: 'Ammaaf homtuu hin jiru.',
+  inviteTitle: 'Hiriyoota affeeri',
+  inviteBody: 'Liinkii kee qoodi. Yeroo hiriyaan kee jalqabaaf maallaqa galchu boonasii argatta.',
+  share: 'Liinkii qoodi',
+  invited: 'Hiriyoota makaman',
+  memberSince: "Miseensa erga ta'ee",
+  myGames: 'Taphoota koo',
+  won: "Mo'e",
+  lost: "Mo'ame",
+  cancelledShort: "Deebi'e",
+  rules: 'Akkaataa taphaa',
+  rulesBody:
+    "Sa'aatiin osoo hin xumuramin kaarteelaa hanga 4 filadhu. Kubbaawwan 1–75 tokko tokkoon waamamu (B 1–15, I 16–30, N 31–45, G 46–60, O 61–75). Kaarteelaan dursee toora, utubaa ykn diyaagoonaalii guute mo'a; ★ bilisa. Kaarteelaan kubbaa tokko irratti guutan badhaasa qooddatu.",
+  fair: 'Tapha haqaa',
+  fairBody: 'Tartiibni kubbaawwanii kaarteelaan tokko illee osoo hin gurguramin murtaa\'eera. Mallattoo isaa:',
+  pending: "Mirkanaa'aa jira",
+  approved: 'Galeera',
+  rejected: 'Didame',
+  paid: 'Kaffalameera',
+  signInDev: 'Seensa misoomsitootaa',
+  telegramOnly: 'Tapha kana bot Telegram irraa bani.',
+  retry: "Irra deebi'ii yaali",
+  close: 'Cufi',
+  promoTitle: 'Koodii promoo',
+  promoPlaceholder: 'Koodii kee barreessi',
+  redeem: 'Fayyadami',
+  promoDone: '+qarshii {amount} waaleetii boonasii keetti galeera',
+  PROMO_NOT_FOUND: 'Koodiin promoo kun hin jiru. Barreeffama isaa mirkaneessi.',
+  PROMO_OFF: 'Koodiin promoo kun kana booda hin hojjetu.',
+  PROMO_EXPIRED: 'Yeroon koodii promoo kanaa darbeera.',
+  PROMO_USED_UP: "Koodiin promoo kun baay'ina taphattootaa hayyamameen fayyadamameera.",
+  PROMO_ALREADY_USED: 'Koodii promoo kana duraan fayyadamteetta.',
+  PROMO_NEEDS_DEPOSIT: 'Koodiin promoo kun taphattoota maallaqa galchaniif qofa.',
+  soundOn: 'Sagalee bani',
+  soundOff: 'Sagalee cufi',
+};
+
 export type Key = keyof typeof en;
-const dicts: Record<Lang, Dict> = { en, am };
+const dicts: Record<Lang, Dict> = { en, am, om };
 
 interface I18n {
   lang: Lang;

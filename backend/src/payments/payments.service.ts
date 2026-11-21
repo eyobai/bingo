@@ -158,7 +158,11 @@ export class PaymentsService {
         bonus = (amount * BigInt(m.firstDepositBonusPercent)) / 100n;
         if (bonus > m.firstDepositBonusMaxMinor) bonus = m.firstDepositBonusMaxMinor;
         await this.wallet.grantBonus(d.userId, bonus, `First-deposit bonus (${m.firstDepositBonusPercent}%)`, `first-deposit:${d.userId}`, tx);
-        if (d.user.referredById && !d.user.referralPaid && m.referralBonusMinor > 0n) {
+        const rewarded = d.user.referredById
+          ? await tx.user.count({ where: { referredById: d.user.referredById, referralPaid: true } })
+          : 0;
+        const underLimit = m.referralMaxFriends === 0 || rewarded < m.referralMaxFriends;
+        if (d.user.referredById && !d.user.referralPaid && m.referralBonusMinor > 0n && underLimit) {
           await this.wallet.grantBonus(
             d.user.referredById,
             m.referralBonusMinor,
