@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#0b1120"/>
+  <g transform="translate(136 86) scale(0.8)">
+    <rect width="300" height="300" rx="34" fill="#172238" stroke="#24304a" stroke-width="6"/>
+    <g font-family="Inter Display" font-weight="900" font-size="40" text-anchor="middle">
+      <rect x="22" y="22" width="76" height="76" rx="16" fill="#f6b93b"/><text x="60" y="74" fill="#241600">7</text>
+      <rect x="112" y="22" width="76" height="76" rx="16" fill="#24304a"/><text x="150" y="74" fill="#8a97b0">21</text>
+      <rect x="202" y="22" width="76" height="76" rx="16" fill="#24304a"/><text x="240" y="74" fill="#8a97b0">44</text>
+      <rect x="22" y="112" width="76" height="76" rx="16" fill="#24304a"/><text x="60" y="164" fill="#8a97b0">3</text>
+      <rect x="112" y="112" width="76" height="76" rx="16" fill="#f6b93b"/><text x="150" y="168" fill="#241600" font-size="46">★</text>
+      <rect x="202" y="112" width="76" height="76" rx="16" fill="#24304a"/><text x="240" y="164" fill="#8a97b0">59</text>
+      <rect x="22" y="202" width="76" height="76" rx="16" fill="#24304a"/><text x="60" y="254" fill="#8a97b0">12</text>
+      <rect x="112" y="202" width="76" height="76" rx="16" fill="#24304a"/><text x="150" y="254" fill="#8a97b0">38</text>
+      <rect x="202" y="202" width="76" height="76" rx="16" fill="#f6b93b"/><text x="240" y="254" fill="#241600">75</text>
+    </g>
+  </g>
+  <text x="256" y="410" text-anchor="middle" font-family="Inter Display" font-weight="900" font-size="46" letter-spacing="5" fill="#f6b93b">LEYU BINGO</text>
+</svg>
