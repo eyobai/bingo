@@ -5,6 +5,7 @@ import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { BotService } from '../bot/bot.service';
 import { AppError } from '../common/common';
 import { APP_CONFIG, type AppConfig } from '../config/config';
+import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma.service';
 
 const CODE_TTL_MS = 5 * 60_000;
@@ -33,12 +34,17 @@ export class StaffAuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly bot: BotService,
+    private readonly users: UsersService,
     private readonly jwt: JwtService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   private async staff(telegramId: string) {
-    const user = await this.prisma.user.findUnique({ where: { telegramId: BigInt(telegramId) } });
+    let user = await this.prisma.user.findUnique({ where: { telegramId: BigInt(telegramId) } });
+    // Listed in ADMIN_TELEGRAM_IDS but no account yet (e.g. after a database reset): create it, so the code is sent.
+    if (!user && this.config.adminTelegramIds.has(telegramId)) {
+      user = (await this.users.fromTelegram({ id: Number(telegramId), first_name: 'Staff' })).user;
+    }
     const isStaff = user?.role === Role.ADMIN || this.config.adminTelegramIds.has(telegramId);
     return isStaff && user && !user.isBlocked ? user : null;
   }
