@@ -98,11 +98,18 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
           <span className="text-[8px] font-black tracking-widest text-white/85">ETB</span>
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-lg" style={{ color }}>
-            {room.name}
+          {/* The card price is what players choose by, so it is the title. */}
+          <span className="flex items-baseline gap-1.5">
+            <span className="font-display text-[28px] leading-none tabular-nums text-ink">{fmt(room.stake.birr)}</span>
+            <span className="font-display text-sm text-ink">ETB</span>
+            <span className="text-[11px] font-bold text-muted">{t('perCard')}</span>
           </span>
-          <span className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: drawing ? 'var(--color-live)' : color }} />
+          <span className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted">
+            <span className="font-bold" style={{ color }}>
+              {room.name}
+            </span>
+            <span aria-hidden>·</span>
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: drawing ? 'var(--color-live)' : color }} />
             {r.players} {drawing ? t('playing') : t('waiting')}
           </span>
         </span>
@@ -118,7 +125,7 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
       <div className="flex items-end justify-between gap-3">
         <span className="min-w-0">
           <span className="block text-[10px] font-bold uppercase tracking-widest text-muted">{t('maxWin')}</span>
-          <span className="font-display text-3xl leading-tight tabular-nums" style={{ color }}>
+          <span className="font-display text-2xl leading-tight tabular-nums" style={{ color }}>
             {fmt(room.maxWin.birr)}
           </span>
           <span className="ml-1 text-sm text-muted">ETB</span>
@@ -127,7 +134,7 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
           className={`shrink-0 rounded-xl px-6 py-3 font-display text-base ${selecting ? 'text-bg' : 'border-2 bg-transparent'}`}
           style={selecting ? { background: color } : { borderColor: color, color }}
         >
-          {selecting ? t('join') : t('watch')}
+          {selecting ? `${t('join')} · ${fmt(room.stake.birr)}` : t('watch')}
         </span>
       </div>
 
