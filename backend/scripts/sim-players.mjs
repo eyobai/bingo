@@ -76,7 +76,11 @@ async function devLogin(telegramId, firstName) {
     return (await call('/auth/dev', null, { telegramId, firstName })).token;
   } catch (e) {
     if (e.status === 404) {
-      console.error('The server refused the developer sign-in. Set DEV_LOGIN=true in backend/.env and restart it.');
+      console.error(
+        process.env.NODE_ENV === 'production'
+          ? 'No TEST_KEY found. On the live server: in deploy/.env set TEST_MODE=true and TEST_KEY=<openssl rand -hex 16>, run docker compose up -d, then try again (or pass --test-key <key>).'
+          : 'The server refused the developer sign-in. Set DEV_LOGIN=true in backend/.env and restart it.',
+      );
       process.exit(1);
     }
     throw e;
