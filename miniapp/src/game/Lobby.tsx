@@ -116,9 +116,14 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
 
       <div className="flex items-end justify-between gap-3">
         <span className="min-w-0">
-          <span className="block text-[10px] font-bold uppercase tracking-widest text-muted">{t('prizeNow')}</span>
-          <span className="font-display text-xl leading-tight tabular-nums text-ink">{fmt(r.prize.birr)}</span>
+          <span className="block text-[10px] font-bold uppercase tracking-widest text-muted">{t('maxWin')}</span>
+          <span className="font-display text-2xl leading-tight tabular-nums" style={{ color }}>
+            {fmt(room.maxWin.birr)}
+          </span>
           <span className="ml-1 text-xs text-muted">ETB</span>
+          <span className="mt-0.5 block text-[11px] font-bold text-muted">
+            {t('prizeNow')} <span className="text-ink">{fmt(r.prize.birr)} ETB</span>
+          </span>
         </span>
         <span
           className={`shrink-0 rounded-xl px-6 py-3 font-display text-base ${selecting ? 'text-bg' : 'border-2 bg-transparent'}`}

@@ -37,6 +37,7 @@ export interface LobbyRoom {
   stake: Money;
   cardPool: number;
   selectSeconds: number;
+  maxWin: Money;
   round: {
     number: number;
     status: RoundStatus;

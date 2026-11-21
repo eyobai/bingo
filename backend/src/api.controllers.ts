@@ -183,6 +183,7 @@ export class GameController {
       return [
         {
           ...room,
+          maxWin: money(this.game.maxWinMinor(id)),
           round: {
             number: round.number,
             status: round.status,
