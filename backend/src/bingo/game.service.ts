@@ -14,7 +14,16 @@ import { settle } from './prize';
 /** Selling stops this long before the countdown hits zero, so a purchase never races the round start. */
 const CLOSE_GRACE_MS = 300;
 const CANCELLED_PAUSE_MS = 4000;
-const MIN_PLAYERS = 2;
+export const MIN_PLAYERS = 2;
+
+/** One room per stake, shown in the lobby in this order. */
+const DEFAULT_ROOMS = [
+  { id: 'r10', name: 'Classic', stakeMinor: 1_000n, cardPool: 400, sortOrder: 0 },
+  { id: 'r20', name: 'Silver', stakeMinor: 2_000n, cardPool: 400, sortOrder: 1 },
+  { id: 'r50', name: 'Gold', stakeMinor: 5_000n, cardPool: 400, sortOrder: 2 },
+  { id: 'r100', name: 'VIP', stakeMinor: 10_000n, cardPool: 400, sortOrder: 3 },
+  { id: 'r200', name: 'VVIP', stakeMinor: 20_000n, cardPool: 400, sortOrder: 4 },
+];
 /** Card numbers run 1..1000 at most; rooms choose how many of them to offer. */
 export const MAX_CARD_POOL = 1000;
 
@@ -72,10 +81,11 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
   }
 
   async onApplicationBootstrap() {
-    if (this.config.seedRooms && (await this.prisma.room.count()) === 0) {
-      await this.prisma.room.create({
-        data: { id: 'r10', name: '10 Birr Game', stakeMinor: 1000n, cardPool: 400, guaranteedPrizeMinor: 0n },
-      });
+    if (this.config.seedRooms) {
+      // The standard stake rooms. Only missing ones are added: staff can rename them, change them or switch them off.
+      await this.prisma.room.createMany({ data: DEFAULT_ROOMS, skipDuplicates: true });
+      // Rename the first room from its old default name to match the others.
+      await this.prisma.room.updateMany({ where: { id: 'r10', name: '10 Birr Game' }, data: { name: 'Classic' } });
     }
     const rooms = await this.prisma.room.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } });
     this.cardSet = generateCardSet(MAX_CARD_POOL, this.config.cardSetSeed);
@@ -104,8 +114,17 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     return this.cardSet.slice(0, pool);
   }
 
+  /** Open rooms, in lobby order. */
   roomIds(): string[] {
-    return [...this.live.keys()];
+    return [...this.live.values()].sort((a, b) => a.room.sortOrder - b.room.sortOrder || Number(a.room.stakeMinor - b.room.stakeMinor)).map((l) => l.room.id);
+  }
+
+  /** The prize if every card in the room were sold: the most a single winner can get in one round. */
+  maxWinMinor(roomId: string): bigint {
+    const l = this.live.get(roomId);
+    if (!l) return 0n;
+    const { room } = l;
+    return settle({ stakeTotalMinor: BigInt(room.cardPool) * room.stakeMinor, houseCutBps: room.houseCutBps, guaranteedMinor: room.guaranteedPrizeMinor, winners: 1 }).prizeMinor;
   }
 
   /** Everything a viewer of the room may see. Never includes the server seed of a running round. */

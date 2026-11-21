@@ -30,6 +30,31 @@ export interface Winner {
   layout: number[];
 }
 
+/** One room in the lobby (GET /rooms). */
+export interface LobbyRoom {
+  id: string;
+  name: string;
+  stake: Money;
+  cardPool: number;
+  selectSeconds: number;
+  maxWin: Money;
+  round: {
+    number: number;
+    status: RoundStatus;
+    players: number;
+    cardsSold: number;
+    prize: Money;
+    selectEndsAt: string;
+    calls: number;
+    needPlayers: number;
+    nextRoundAt: string | null;
+  };
+}
+export interface LobbyState {
+  serverTime: string;
+  rooms: LobbyRoom[];
+}
+
 export interface RoomState {
   serverTime: string;
   room: {

@@ -7,6 +7,7 @@ interface TgWebApp {
   setHeaderColor?(color: string): void;
   setBackgroundColor?(color: string): void;
   openTelegramLink?(url: string): void;
+  BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
   HapticFeedback?: {
     impactOccurred(style: 'light' | 'medium' | 'heavy'): void;
     notificationOccurred(type: 'success' | 'warning' | 'error'): void;
@@ -27,6 +28,21 @@ export const telegram = {
     app.expand();
     app.setHeaderColor?.('#0b1120');
     app.setBackgroundColor?.('#0b1120');
+  },
+  /** Shows Telegram's own back arrow (top left) while `onBack` is set; pass null to hide it. */
+  backButton(onBack: (() => void) | null) {
+    const b = tg()?.BackButton;
+    if (!b) return () => undefined;
+    if (!onBack) {
+      b.hide();
+      return () => undefined;
+    }
+    b.onClick(onBack);
+    b.show();
+    return () => {
+      b.offClick(onBack);
+      b.hide();
+    };
   },
   tap: () => tg()?.HapticFeedback?.selectionChanged(),
   bump: () => tg()?.HapticFeedback?.impactOccurred('light'),

@@ -4,7 +4,7 @@ import { PaymentMethod } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Min } from 'class-validator';
 import { verifyInitData } from './auth/telegram-init-data';
-import { GameService } from './bingo/game.service';
+import { GameService, MIN_PLAYERS } from './bingo/game.service';
 import { lineName } from './bingo/cards';
 import { AppError, CurrentUser, Public, money, type AuthUser } from './common/common';
 import { APP_CONFIG, type AppConfig } from './config/config';
@@ -175,10 +175,30 @@ export class GameController {
   @Public()
   @Get('rooms')
   rooms() {
-    return this.game.roomIds().map((id) => {
-      const s = this.game.publicState(id)!;
-      return { ...s.room, round: { number: s.round.number, status: s.round.status, players: s.round.players, prize: s.round.prize, selectEndsAt: s.round.selectEndsAt } };
+    // Lobby: every open room with a short live summary.
+    const rooms = this.game.roomIds().flatMap((id) => {
+      const s = this.game.publicState(id);
+      if (!s) return [];
+      const { round, room } = s;
+      return [
+        {
+          ...room,
+          maxWin: money(this.game.maxWinMinor(id)),
+          round: {
+            number: round.number,
+            status: round.status,
+            players: round.players,
+            cardsSold: round.cardsSold,
+            prize: round.prize,
+            selectEndsAt: round.selectEndsAt,
+            calls: round.calls.length,
+            needPlayers: Math.max(0, MIN_PLAYERS - round.players),
+            nextRoundAt: s.result?.nextRoundAt ?? s.cancelled?.nextRoundAt ?? null,
+          },
+        },
+      ];
     });
+    return { serverTime: new Date().toISOString(), rooms };
   }
 
   /** Card layouts 1..pool. They never change, so the app downloads them once. */

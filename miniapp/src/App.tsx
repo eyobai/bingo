@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ApiError, api, session, type Balances, type User } from './api';
 import { GameScreen } from './game/GameScreen';
+import { Lobby } from './game/Lobby';
 import { Header } from './Header';
 import { I18nProvider, useI18n, type Lang } from './i18n';
 import { ProfileView } from './ProfileView';
@@ -10,7 +11,6 @@ import { WalletView } from './wallet/WalletView';
 // Browser sign-in for testing: on by default with `npm run dev`, off in builds unless VITE_DEV_LOGIN=true.
 // The server must also allow it (DEV_LOGIN=true, refused in production).
 const DEV_LOGIN = import.meta.env.VITE_DEV_LOGIN === 'true' || (import.meta.env.DEV && import.meta.env.VITE_DEV_LOGIN !== 'false');
-const ROOM_ID = 'r10';
 
 type Boot = { kind: 'loading' } | { kind: 'ready'; user: User } | { kind: 'dev' } | { kind: 'error'; message: string };
 
@@ -65,6 +65,11 @@ type Tab = 'game' | 'wallet' | 'profile';
 function Shell({ user }: { user: User }) {
   const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>('game');
+  /** The room being played or watched; null shows the list of games. */
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const backToGames = useCallback(() => setRoomId(null), []);
+  // Telegram's back arrow returns from a room to the list of games.
+  useEffect(() => telegram.backButton(tab === 'game' && roomId ? backToGames : null), [tab, roomId, backToGames]);
   const [wallet, setWallet] = useState<Balances | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -90,7 +95,16 @@ function Shell({ user }: { user: User }) {
       <main className="flex-1 pb-20">
         {/* The game stays mounted so the live connection survives tab switches. */}
         <div hidden={tab !== 'game'}>
-          <GameScreen roomId={ROOM_ID} onWallet={setWallet} onNeedMoney={() => setTab('wallet')} toast={showToast} />
+          {roomId ? (
+            <>
+              <button type="button" onClick={backToGames} className="flex w-full items-center gap-1.5 border-b border-line px-3 py-2 text-left text-xs font-bold text-muted active:text-ink">
+                <span aria-hidden>‹</span> {t('allGames')}
+              </button>
+              <GameScreen key={roomId} roomId={roomId} onWallet={setWallet} onNeedMoney={() => setTab('wallet')} toast={showToast} />
+            </>
+          ) : (
+            <Lobby onOpen={setRoomId} />
+          )}
         </div>
         {tab === 'wallet' && <WalletView wallet={wallet} />}
         {tab === 'profile' && <ProfileView user={user} />}
@@ -109,7 +123,7 @@ function Shell({ user }: { user: User }) {
               ['profile', '☺', t('profile')],
             ] as const
           ).map(([k, icon, label]) => (
-            <button key={k} type="button" onClick={() => setTab(k)} aria-current={tab === k} className={`flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-bold ${tab === k ? 'text-gold' : 'text-muted'}`}>
+            <button key={k} type="button" onClick={() => (k === 'game' && tab === 'game' ? setRoomId(null) : setTab(k))} aria-current={tab === k} className={`flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-bold ${tab === k ? 'text-gold' : 'text-muted'}`}>
               <span className="text-lg leading-none">{icon}</span>
               {label}
             </button>
