@@ -101,9 +101,11 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       await bot.api.setMyShortDescription(TEXTS.en.shortDescription);
       await bot.api.setMyShortDescription(TEXTS.am.shortDescription, { language_code: 'am' });
       await bot.api.setMyShortDescription(TEXTS.om.shortDescription, { language_code: 'om' });
+      // The button next to the message box opens the command list ("Menu"); the game opens from the
+      // 🎮 menu keyboard button and the Play now buttons.
+      await bot.api.setChatMenuButton({ menu_button: { type: 'commands' } });
       if (this.config.bot.miniAppUrl.startsWith('https://')) {
-        await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Play', web_app: { url: this.config.bot.miniAppUrl } } });
-        this.logger.log(`Play button opens ${this.config.bot.miniAppUrl}`);
+        this.logger.log(`Play buttons open ${this.config.bot.miniAppUrl}`);
       } else {
         this.logger.warn('MINIAPP_URL is not an https address: the Play button is hidden until it is set.');
       }

@@ -92,6 +92,9 @@ const en = {
   PROMO_USED_UP: 'This promo code has been used by the maximum number of players.',
   PROMO_ALREADY_USED: 'You have already used this promo code.',
   PROMO_NEEDS_DEPOSIT: 'This promo code is for players who have made a deposit.',
+  balls: 'Balls',
+  currentCall: 'Current call',
+  watching: "You're watching this round. Pick a cartela in the next round to play.",
   soundOn: 'Turn sound on',
   soundOff: 'Turn sound off',
 } as const;
@@ -188,6 +191,9 @@ const am: Dict = {
   PROMO_USED_UP: 'ይህ ፕሮሞ ኮድ በተፈቀደው የተጫዋቾች ብዛት ተጠቅሟል።',
   PROMO_ALREADY_USED: 'ይህን ፕሮሞ ኮድ አስቀድመው ተጠቅመውበታል።',
   PROMO_NEEDS_DEPOSIT: 'ይህ ፕሮሞ ኮድ ገንዘብ ላስገቡ ተጫዋቾች ነው።',
+  balls: 'ኳሶች',
+  currentCall: 'የተጠራው ቁጥር',
+  watching: 'ይህን ዙር እየተመለከቱ ነው። ለመጫወት በሚቀጥለው ዙር ካርቴላ ይምረጡ።',
   soundOn: 'ድምፅ አብራ',
   soundOff: 'ድምፅ አጥፋ',
 };
@@ -284,6 +290,9 @@ const om: Dict = {
   PROMO_USED_UP: "Koodiin promoo kun baay'ina taphattootaa hayyamameen fayyadamameera.",
   PROMO_ALREADY_USED: 'Koodii promoo kana duraan fayyadamteetta.',
   PROMO_NEEDS_DEPOSIT: 'Koodiin promoo kun taphattoota maallaqa galchaniif qofa.',
+  balls: 'Kubbaawwan',
+  currentCall: 'Lakkoofsa waamame',
+  watching: 'Marsaa kana ilaalaa jirta. Taphachuuf marsaa itti aanu irratti kaarteelaa filadhu.',
   soundOn: 'Sagalee bani',
   soundOff: 'Sagalee cufi',
 };

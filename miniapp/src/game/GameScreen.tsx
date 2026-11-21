@@ -206,55 +206,6 @@ function SoundButton() {
   );
 }
 
-function CallStrip({ state }: { state: RoomState }) {
-  const { t } = useI18n();
-  const calls = state.round.calls;
-  const last = calls.at(-1) ?? null;
-  const recent = calls.slice(-7, -1).reverse();
-  return (
-    <div className="flex items-center gap-2 px-3 py-2.5">
-      <div className="flex shrink-0 flex-col rounded-xl border-2 border-gold/70 bg-gold/10 px-2.5 py-1">
-        <span className="text-[8px] font-black uppercase tracking-widest text-gold">{t('prizePool')}</span>
-        <span className="font-display text-lg leading-tight tabular-nums text-gold">{state.round.prize.birr} ETB</span>
-      </div>
-      <BigBall n={last} size={58} />
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden rounded-full border border-line bg-panel px-1.5 py-1">
-        {recent.map((n) => (
-          <BallChip key={n} n={n} size={30} />
-        ))}
-      </div>
-      <span className="shrink-0 text-[11px] font-bold tabular-nums text-muted">
-        <span className="text-gold">●</span> {calls.length}/75
-      </span>
-    </div>
-  );
-}
-
-function Board({ calls }: { calls: number[] }) {
-  const set = new Set(calls);
-  const last = calls.at(-1);
-  return (
-    <div className="grid grid-cols-[repeat(16,minmax(0,1fr))] gap-[3px] px-3 pb-3">
-      {LETTERS.map((l, c) => (
-        <div key={l} className="contents">
-          <div className="flex aspect-square items-center justify-center rounded font-display text-[10px] text-white" style={{ background: colorOf(c * 15 + 1) }}>
-            {l}
-          </div>
-          {Array.from({ length: 15 }, (_, i) => c * 15 + i + 1).map((n) => (
-            <div
-              key={n}
-              className={`flex aspect-square items-center justify-center rounded text-[9px] font-bold tabular-nums ${set.has(n) ? 'text-white' : 'bg-panel-2 text-muted'} ${n === last ? 'ring-2 ring-white' : ''}`}
-              style={set.has(n) ? { background: colorOf(n) } : undefined}
-            >
-              {n}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function PlayView({ state, mine, layouts }: RoomHook) {
   const { t } = useI18n();
   const [mode, setMode] = useState<'auto' | 'manual'>(() => {
@@ -264,7 +215,6 @@ function PlayView({ state, mine, layouts }: RoomHook) {
       return 'auto';
     }
   });
-  const [showBoard, setShowBoard] = useState(false);
   const [manualMarks, setManualMarks] = useState<Set<number>>(new Set());
   const called = useMemo(() => new Set(state.round.calls), [state.round.calls]);
   const lastCount = useRef(state.round.calls.length);
@@ -297,61 +247,111 @@ function PlayView({ state, mine, layouts }: RoomHook) {
     });
   };
 
+  const calls = state.round.calls;
+  const last = calls.at(-1) ?? null;
+  const recent = calls.slice(-4, -1).reverse();
+  const playing = mine.length > 0 && layouts.length > 0;
+
   return (
     <div className="flex flex-col">
       <RoundBar state={state} />
-      <CallStrip state={state} />
-      <div className="flex items-center gap-2 px-3 pb-2">
-        <button
-          type="button"
-          onClick={() => setShowBoard((v) => !v)}
-          aria-expanded={showBoard}
-          className="flex flex-1 items-center justify-between rounded-xl border border-line bg-panel px-3 py-2 text-[11px] font-black uppercase tracking-wider"
-        >
-          <span>▦ {t('trackNumbers')}</span>
-          <span className="text-muted">{showBoard ? '▴' : '▾'}</span>
-        </button>
-        <div className="flex rounded-full border border-line bg-panel p-0.5 text-[10px] font-black uppercase">
-          {(['auto', 'manual'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setModeSaved(m)}
-              aria-pressed={mode === m}
-              className={`rounded-full px-3 py-1.5 ${mode === m ? 'bg-ink text-bg' : 'text-muted'}`}
-            >
-              {t(m)}
-            </button>
-          ))}
+      <div className="grid grid-cols-[minmax(0,44fr)_minmax(0,56fr)] items-start gap-2 p-2">
+        {/* Left: every number 1-75 under its letter, lit up as it is called. */}
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="grid grid-cols-2 divide-x divide-line overflow-hidden rounded-xl border border-line bg-panel text-center">
+            <div className="px-1 py-1.5">
+              <p className="text-[8px] font-bold uppercase tracking-widest text-muted">{t('cards')}</p>
+              <p className="font-display text-sm tabular-nums">{state.round.cardsSold}</p>
+            </div>
+            <div className="px-1 py-1.5">
+              <p className="text-[8px] font-bold uppercase tracking-widest text-muted">{t('balls')}</p>
+              <p className="font-display text-sm tabular-nums text-gold">{calls.length}/75</p>
+            </div>
+          </div>
+          <VerticalBoard calls={calls} />
         </div>
-      </div>
-      {showBoard && <Board calls={state.round.calls} />}
 
-      {mine.length && layouts.length ? (
-        <div className="flex flex-col gap-2 px-3 pb-4">
-          <p className="text-[11px] text-muted">{mode === 'auto' ? t('autoHelp') : t('manualHelp')}</p>
-          <div className={`grid gap-2 ${mine.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            {mine.map((n) => (
-              <BingoCard
-                key={n}
-                cardNo={n}
-                layout={layouts[n - 1]}
-                marked={marked}
-                hint={mode === 'manual' ? called : undefined}
-                onCell={mode === 'manual' ? toggleMark : undefined}
-                compact={mine.length > 1}
-                tone="mine"
-              />
+        {/* Right: the latest calls, then your cards (or a note when you are only watching). */}
+        <div className="flex min-w-0 flex-col items-center gap-2">
+          <p className="pt-1 text-[10px] font-black uppercase tracking-[0.2em] text-muted">{t('currentCall')}</p>
+          <div className="flex h-9 items-center gap-1.5">
+            {recent.map((n) => (
+              <BallChip key={n} n={n} size={34} />
             ))}
           </div>
+          <BigBall n={last} size={96} />
+          <p className="rounded-full border border-gold/60 bg-gold/10 px-3 py-1 text-xs font-black tabular-nums text-gold">
+            {t('prizePool')}: {state.round.prize.birr} ETB
+          </p>
+
+          {playing ? (
+            <div className="flex w-full flex-col gap-2">
+              <div className="grid grid-cols-2 rounded-full border border-line bg-panel p-0.5 text-[10px] font-black uppercase">
+                {(['auto', 'manual'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setModeSaved(m)}
+                    aria-pressed={mode === m}
+                    className={`rounded-full py-1.5 ${mode === m ? 'bg-ink text-bg' : 'text-muted'}`}
+                  >
+                    {t(m)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-center text-[10px] leading-snug text-muted">{mode === 'auto' ? t('autoHelp') : t('manualHelp')}</p>
+              {mine.map((n) => (
+                <BingoCard
+                  key={n}
+                  cardNo={n}
+                  layout={layouts[n - 1]}
+                  marked={marked}
+                  hint={mode === 'manual' ? called : undefined}
+                  onCell={mode === 'manual' ? toggleMark : undefined}
+                  compact
+                  tone="mine"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex min-h-48 w-full items-center justify-center rounded-2xl border border-line bg-panel px-4 py-8 text-center">
+              <p className="text-base font-semibold leading-snug">{t('watching')}</p>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-panel-2 text-2xl text-muted">◷</div>
-          <p className="text-lg font-black">{t('roundInProgress')}</p>
-          <p className="text-[11px] font-bold uppercase tracking-widest text-muted">{t('waitNext')}</p>
-        </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+/** 1-75 in five columns under B I N G O; called numbers take their column colour, the latest one is ringed. */
+function VerticalBoard({ calls }: { calls: number[] }) {
+  const set = new Set(calls);
+  const last = calls.at(-1);
+  return (
+    <div className="rounded-xl border border-line bg-panel p-1.5">
+      <div className="grid grid-cols-5 gap-1">
+        {LETTERS.map((l, c) => (
+          <div key={l} className="py-0.5 text-center font-display text-xs" style={{ color: colorOf(c * 15 + 1) }}>
+            {l}
+          </div>
+        ))}
+        {Array.from({ length: 15 }, (_, row) =>
+          LETTERS.map((_, c) => {
+            const n = c * 15 + row + 1;
+            const on = set.has(n);
+            return (
+              <div
+                key={n}
+                className={`flex aspect-square items-center justify-center rounded-md text-[11px] font-bold tabular-nums ${on ? 'text-white' : 'bg-panel-2 text-muted'} ${n === last ? 'ring-2 ring-white ring-offset-1 ring-offset-panel' : ''}`}
+                style={on ? { background: colorOf(n) } : undefined}
+              >
+                {n}
+              </div>
+            );
+          }),
+        )}
+      </div>
     </div>
   );
 }

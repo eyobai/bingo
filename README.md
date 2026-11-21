@@ -118,7 +118,8 @@ that never changes, use a free ngrok static domain or a named Cloudflare tunnel 
    username in `BOT_USERNAME`.
 2. Build the Mini App (`npm run build` in `miniapp/`, with `VITE_API_URL` set to the backend's public
    address and `VITE_DEV_LOGIN=false`) and host `miniapp/dist` on any https site. Put that address in
-   `MINIAPP_URL`. The bot sets it as its menu button on start.
+   `MINIAPP_URL`. The 🎮 menu-keyboard button and the Play now buttons open it; the button next to the message
+   box is Telegram's command Menu.
 3. Run the backend somewhere it stays up (a VPS, Railway, Render…) with `NODE_ENV=production`. It uses long
    polling, so it needs no public webhook. Run **one** instance: the round timers live in the process.
 4. Put your Telegram user id in `ADMIN_TELEGRAM_IDS`, restart, and send `/start` to the bot. You will now get
