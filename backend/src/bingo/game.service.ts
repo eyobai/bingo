@@ -10,6 +10,7 @@ import { PrismaService, Tx } from '../prisma.service';
 import { type CardLayout, completeLines, generateCardSet } from './cards';
 import { ballOrder, newServerSeed } from './fair';
 import { settle } from './prize';
+import { isTestPlayer } from '../test-players';
 
 /** Selling stops this long before the countdown hits zero, so a purchase never races the round start. */
 const CLOSE_GRACE_MS = 300;
@@ -21,6 +22,8 @@ export const MAX_CARD_POOL = 1000;
 interface LiveWinner {
   cardNo: number;
   name: string;
+  /** A test player run by the platform; its prize goes to the next round. */
+  test: boolean;
   lineIndex: number;
   layout: CardLayout;
 }
@@ -31,9 +34,11 @@ interface LiveRoom {
   order: number[];
   /** cardNo -> owner userId, for cards sold this round. */
   cards: Map<number, string>;
+  /** Owners who are test players (TEST_MODE). Shown to everyone; their winnings are carried over. */
+  testUsers: Set<string>;
   called: Set<number>;
   timer?: NodeJS.Timeout;
-  result?: { winners: LiveWinner[]; prizePerWinnerMinor: bigint; nextRoundAt: Date };
+  result?: { winners: LiveWinner[]; prizePerWinnerMinor: bigint; nextRoundAt: Date; carriedOverMinor: bigint };
   cancelled?: { reason: string; nextRoundAt: Date };
   busy: boolean;
 }
@@ -113,10 +118,12 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const l = this.live.get(roomId);
     if (!l) return null;
     const { room, round } = l;
+    const carry = this.carryMinor;
     const preview =
-      round.stakeTotalMinor > 0n || round.guaranteedMinor > 0n
-        ? settle({ stakeTotalMinor: round.stakeTotalMinor, houseCutBps: round.houseCutBps, guaranteedMinor: round.guaranteedMinor, winners: 1 }).prizeMinor
+      round.stakeTotalMinor > 0n || round.guaranteedMinor > 0n || carry > 0n
+        ? settle({ stakeTotalMinor: round.stakeTotalMinor, houseCutBps: round.houseCutBps, guaranteedMinor: round.guaranteedMinor, winners: 1, carryMinor: carry }).prizeMinor
         : 0n;
+    const testCards = [...l.cards.entries()].filter(([, u]) => l.testUsers.has(u)).map(([c]) => c);
     const finished = round.status === RoundStatus.FINISHED;
     return {
       serverTime: new Date().toISOString(),
@@ -144,10 +151,16 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         players: new Set(l.cards.values()).size,
         prize: money(finished ? round.prizeMinor : preview),
         taken: [...l.cards.keys()].sort((a, b) => a - b),
+        /** Test players and the cards they hold, so everyone can see them. */
+        testPlayers: [...l.testUsers].filter((u) => [...l.cards.values()].includes(u)).length,
+        testTaken: testCards.sort((a, b) => a - b),
+        /** Carried over from earlier rounds into this prize. */
+        carriedIn: money(finished ? round.carryInMinor : carry),
       },
       result: l.result
         ? {
             prizePerWinner: money(l.result.prizePerWinnerMinor),
+            carriedOver: money(l.result.carriedOverMinor),
             nextRoundAt: l.result.nextRoundAt.toISOString(),
             winners: l.result.winners,
           }
@@ -172,11 +185,13 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     }
     const roundId = l.round.id;
     const stake = l.room.stakeMinor;
+    let buyerIsTest = false;
     try {
       await this.ledger.withTx(async (tx) => {
         const round = await this.lockRound(tx, roundId);
         this.assertSelling(round);
         const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+        buyerIsTest = isTestPlayer(user.telegramId);
         if (user.isBlocked) throw new AppError(HttpStatus.FORBIDDEN, 'BLOCKED', 'Your account is blocked. Contact support.');
         if (this.config.requirePhone && !user.phone) {
           throw new AppError(
@@ -239,7 +254,10 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       }
       throw e;
     }
-    if (l.round.id === roundId) for (const n of unique) l.cards.set(n, userId);
+    if (l.round.id === roundId) {
+      for (const n of unique) l.cards.set(n, userId);
+      if (buyerIsTest) l.testUsers.add(userId);
+    }
     this.changed(roomId);
     this.notify.emit('walletChanged', userId);
     return this.myCards(roomId, userId);
@@ -289,8 +307,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const open = await this.prisma.round.findFirst({
       where: { roomId: room.id, status: { in: [RoundStatus.SELECTING, RoundStatus.DRAWING] } },
       orderBy: { createdAt: 'desc' },
-      include: { cards: { select: { cardNo: true, userId: true } } },
+      include: { cards: { select: { cardNo: true, userId: true, user: { select: { telegramId: true } } } } },
     });
+    await this.refreshCarry();
     if (!open) return this.openRound(room);
     const { cards, ...round } = open;
     const l: LiveRoom = {
@@ -298,6 +317,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       round,
       order: ballOrder(round.serverSeed, round.number),
       cards: new Map(cards.map((c) => [c.cardNo, c.userId])),
+      testUsers: new Set(cards.filter((c) => isTestPlayer(c.user.telegramId)).map((c) => c.userId)),
       called: new Set(round.calls),
       busy: false,
     };
@@ -326,7 +346,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         selectEndsAt: new Date(Date.now() + fresh.selectSeconds * 1000),
       },
     });
-    const l: LiveRoom = { room: fresh, round, order: ballOrder(serverSeed, round.number), cards: new Map(), called: new Set(), busy: false };
+    const l: LiveRoom = { room: fresh, round, order: ballOrder(serverSeed, round.number), cards: new Map(), testUsers: new Set(), called: new Set(), busy: false };
     const previous = this.live.get(fresh.id);
     if (previous) clearTimeout(previous.timer);
     this.live.set(fresh.id, l);
@@ -339,7 +359,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const outcome = await this.ledger.withTx(async (tx) => {
       const round = await this.lockRound(tx, roundId);
       if (round.status !== RoundStatus.SELECTING) return 'skip' as const;
-      const cards = await tx.card.findMany({ where: { roundId } });
+      const cards = await tx.card.findMany({ where: { roundId }, include: { user: { select: { telegramId: true } } } });
       const players = new Set(cards.map((c) => c.userId)).size;
       if (cards.length < l.room.minCards || players < MIN_PLAYERS) {
         await this.refundAll(tx, round, cards);
@@ -349,6 +369,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       const started = await tx.round.update({ where: { id: roundId }, data: { status: RoundStatus.DRAWING, startedAt: new Date() } });
       l.round = started;
       l.cards = new Map(cards.map((c) => [c.cardNo, c.userId]));
+      l.testUsers = new Set(cards.filter((c) => isTestPlayer(c.user.telegramId)).map((c) => c.userId));
       return 'started' as const;
     });
 
@@ -397,19 +418,31 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const done = await this.ledger.withTx(async (tx) => {
       const round = await this.lockRound(tx, roundId);
       if (round.status !== RoundStatus.DRAWING) return null;
+      // Carry-over from earlier rounds: the whole balance, read under lock so two rooms cannot both use it.
+      const rollover = await this.ledger.systemAccount(AccountType.ROLLOVER, tx);
+      const locked = await tx.$queryRaw<{ balance_minor: bigint }[]>`SELECT balance_minor FROM ledger_accounts WHERE id = ${rollover.id}::uuid FOR UPDATE`;
+      const carry = locked[0]?.balance_minor ?? 0n;
+      const testWinners = winners.filter((w) => l.testUsers.has(w.userId));
       const s = settle({
         stakeTotalMinor: round.stakeTotalMinor,
         houseCutBps: round.houseCutBps,
         guaranteedMinor: round.guaranteedMinor,
         winners: winners.length,
+        carryMinor: carry,
+        sampleWinners: testWinners.length,
       });
       const lines: PostingLine[] = [];
       const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
       lines.push({ accountId: pot.id, amountMinor: -round.stakeTotalMinor });
+      const rolloverChange = s.toRolloverMinor - s.carryInMinor;
+      if (rolloverChange !== 0n) lines.push({ accountId: rollover.id, amountMinor: rolloverChange });
       if (s.topUpMinor > 0n) lines.push({ accountId: (await this.ledger.systemAccount(AccountType.PROMOTIONS, tx)).id, amountMinor: -s.topUpMinor });
       if (s.houseCutMinor > 0n) lines.push({ accountId: (await this.ledger.systemAccount(AccountType.HOUSE_REVENUE, tx)).id, amountMinor: s.houseCutMinor });
       const perUser = new Map<string, bigint>();
-      for (const w of winners) perUser.set(w.userId, (perUser.get(w.userId) ?? 0n) + s.prizePerWinnerMinor);
+      for (const w of winners) {
+        if (l.testUsers.has(w.userId)) continue; // test players' share goes to the rollover line above
+        perUser.set(w.userId, (perUser.get(w.userId) ?? 0n) + s.prizePerWinnerMinor);
+      }
       for (const [userId, amount] of perUser) lines.push({ accountId: (await this.ledger.userAccounts(userId, tx)).main.id, amountMinor: amount });
       await this.ledger.post(
         {
@@ -433,19 +466,24 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
           houseCutMinor: s.houseCutMinor,
           topUpMinor: s.topUpMinor,
           prizePerWinnerMinor: s.prizePerWinnerMinor,
+          carryInMinor: s.carryInMinor,
+          carryOutMinor: s.toRolloverMinor,
         },
       });
-      const users = await tx.user.findMany({ where: { id: { in: [...perUser.keys()] } }, select: { id: true, firstName: true } });
+      const users = await tx.user.findMany({ where: { id: { in: winners.map((w) => w.userId) } }, select: { id: true, firstName: true } });
       return { finished, s, names: new Map(users.map((u) => [u.id, u.firstName])), perUser };
     });
     if (!done) return;
     l.round = done.finished;
+    await this.refreshCarry();
     const nextRoundAt = new Date(Date.now() + this.config.resultSeconds * 1000);
     l.result = {
       prizePerWinnerMinor: done.s.prizePerWinnerMinor,
       nextRoundAt,
+      carriedOverMinor: done.s.toRolloverMinor,
       winners: winners.map((w) => ({
         cardNo: w.cardNo,
+        test: l.testUsers.has(w.userId),
         name: (done.names.get(w.userId) ?? 'Player').slice(0, 20),
         lineIndex: w.lineIndex,
         layout: this.cardSet[w.cardNo - 1],
@@ -498,6 +536,13 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     }, Math.max(0, delayMs));
   }
 
+  /** Rollover balance, cached for display; settlement always reads it from the database under lock. */
+  private carryMinor = 0n;
+  private async refreshCarry() {
+    const acc = await this.prisma.ledgerAccount.findUnique({ where: { code: `SYSTEM:${AccountType.ROLLOVER}` } });
+    this.carryMinor = acc?.balanceMinor ?? 0n;
+  }
+
   private readonly pending = new Map<string, NodeJS.Timeout>();
   /** Coalesces bursts of changes (many purchases at once) into one broadcast per 250 ms. */
   private changed(roomId: string) {
@@ -542,6 +587,8 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       houseCutMinor: r.house_cut_minor,
       topUpMinor: r.top_up_minor,
       prizePerWinnerMinor: r.prize_per_winner_minor,
+      carryInMinor: r.carry_in_minor,
+      carryOutMinor: r.carry_out_minor,
       createdAt: r.created_at,
     };
   }

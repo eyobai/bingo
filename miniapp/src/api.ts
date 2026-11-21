@@ -28,6 +28,8 @@ export interface Winner {
   name: string;
   lineIndex: number;
   layout: number[];
+  /** Card of a test player: the prize share is carried to the next round. */
+  test?: boolean;
 }
 
 export interface RoomState {
@@ -57,8 +59,13 @@ export interface RoomState {
     players: number;
     prize: Money;
     taken: number[];
+    /** Test mode: how many of the players are test players, and which taken cards are theirs. */
+    testPlayers?: number;
+    testTaken?: number[];
+    /** Money carried over from test players' wins, already included in the prize. */
+    carriedIn?: Money;
   };
-  result: { prizePerWinner: Money; nextRoundAt: string; winners: Winner[] } | null;
+  result: { prizePerWinner: Money; nextRoundAt: string; winners: Winner[]; carriedOver?: Money } | null;
   cancelled: { reason: string; nextRoundAt: string } | null;
 }
 

@@ -11,9 +11,7 @@ import { NotifyService } from './notify.service';
 import { PrismaService } from './prisma.service';
 import { UsersService } from './users/users.service';
 
-/** Test players use Telegram ids in this range, which real Telegram accounts are not expected to collide with in testing. */
-export const TEST_ID_MIN = 900_001;
-export const TEST_ID_MAX = 999_999;
+import { TEST_ID_MAX, TEST_ID_MIN } from './test-players';
 const TEST_FUND_MINOR = 50_000n; // 500 birr
 
 class TestLoginDto {

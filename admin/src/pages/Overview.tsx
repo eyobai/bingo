@@ -43,8 +43,9 @@ export function Overview({ go }: { go: (page: string) => void }) {
     <div className="flex flex-col gap-4">
       {s?.testMode && (
         <div role="alert" className="rounded-2xl border border-gold bg-gold-soft px-4 py-3 text-sm font-semibold">
-          TEST MODE is on: test players can join and their test money counts in these numbers. Turn it off (TEST_MODE=false) and reset the
-          database before real players. See DEPLOY.md.
+          TEST MODE is on: platform test players (🤖) can join rooms and every player is told so. Test players' winnings are not paid
+          out; they are carried into the next round's prize. Their test money counts in these numbers. Turn it off (TEST_MODE=false) and
+          reset the database before public launch. See DEPLOY.md.
         </div>
       )}
       {s && !booksOk && (

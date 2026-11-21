@@ -168,8 +168,15 @@ To fill rounds with sample players on the live server while you test:
    ```
 
 Test mode only creates test accounts (Telegram ids 900001–999999), needs the test key, and gives them test
-money directly; nobody can use it to sign in as a real player or as staff. The game and the dashboard show a
-**TEST MODE** banner while it is on.
+money directly; nobody can use it to sign in as a real player or as staff.
+
+Real players can play in the same rooms, and they are told about it:
+
+- Every game screen shows a notice that platform test players are taking part, and the player count shows them
+  separately (e.g. `12 players · 5 🤖`). Cards taken by test players have a dashed outline.
+- A winning test player is marked **🤖 Test player**. Their share of the prize is **not paid to anyone**: it goes
+  into the next round's prize (shown as "+X ETB carried over"), so the platform never keeps it.
+- The bot's rules (`/rules`) include a line about test players, and the dashboard shows a banner.
 
 ### Before real players: switch off and start clean
 

@@ -41,14 +41,34 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
   if (state.testMode) {
     return (
       <>
-        <div role="note" className="bg-amber-400 px-3 py-1 text-center text-[11px] font-black uppercase tracking-wider text-amber-950">
-          Test mode · test players · not real money
-        </div>
+        <TestNotice />
         {view}
       </>
     );
   }
   return view;
+}
+
+/** Tells every player, on every screen, that platform-run test players are in the room. */
+function TestNotice() {
+  const { t } = useI18n();
+  return (
+    <div role="note" className="bg-amber-400 px-3 py-1.5 text-center text-[11px] font-bold leading-snug text-amber-950">
+      {t('testNotice')}
+    </div>
+  );
+}
+
+/** "12 players · 5 🤖" */
+function PlayerCount({ state }: { state: RoomState }) {
+  const { t } = useI18n();
+  const bots = state.round.testPlayers ?? 0;
+  return (
+    <>
+      {state.round.players} {t('players')}
+      {bots > 0 && <> · {t('testCount', { n: bots })}</>}
+    </>
+  );
 }
 
 type RoomHook = ReturnType<typeof useRoom> & { state: RoomState };
@@ -81,6 +101,7 @@ function Countdown({ ms }: { ms: number }) {
 function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toast }: RoomHook & { onNeedMoney: () => void; toast: (m: string) => void }) {
   const { t } = useI18n();
   const taken = useMemo(() => new Set(state.round.taken), [state.round.taken]);
+  const testTaken = useMemo(() => new Set(state.round.testTaken ?? []), [state.round.testTaken]);
   const max = state.room.maxCardsPerPlayer;
   const left = new Date(state.round.selectEndsAt).getTime() - now();
   const closing = left < 1500;
@@ -122,8 +143,11 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
             {state.round.prize.birr}
             <span className="ml-1 text-base">ETB</span>
           </span>
+          {state.round.carriedIn && state.round.carriedIn.minor !== '0' && (
+            <span className="text-[10px] font-bold text-gold">{t('carriedIn', { amount: state.round.carriedIn.birr })}</span>
+          )}
           <span className="text-[10px] text-muted">
-            {state.round.players} {t('players')} · {state.round.cardsSold} {t('cards')}
+            <PlayerCount state={state} /> · {state.round.cardsSold} {t('cards')}
           </span>
         </div>
         <div className="relative hidden h-20 w-32 shrink-0 min-[400px]:block" aria-hidden>
@@ -148,6 +172,12 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
           </span>
         </div>
         <p className="px-4 pt-2 text-[11px] text-muted">{t('tapToPick')}</p>
+        {testTaken.size > 0 && (
+          <p className="flex items-center gap-1.5 px-4 pt-1.5 text-[11px] text-muted">
+            <span className="inline-block h-3 w-3 rounded-sm border border-dashed border-amber-400 bg-taken/40" aria-hidden />
+            {t('testTakenLegend')}
+          </p>
+        )}
         <div className="grid grid-cols-10 gap-1 p-2.5">
           {Array.from({ length: state.room.cardPool }, (_, i) => i + 1).map((n) => {
             const isMine = mine.includes(n);
@@ -155,7 +185,9 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
             const isBusy = busy.has(n);
             const look = isMine
               ? 'bg-gold text-gold-ink border-gold'
-              : isTaken
+              : isTaken && testTaken.has(n)
+                ? 'bg-taken/40 text-taken-ink border-dashed border-amber-400'
+                : isTaken
                 ? 'bg-taken text-taken-ink border-taken'
                 : 'bg-panel-2 text-ink border-line active:bg-line';
             return (
@@ -165,7 +197,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
                 disabled={isTaken || closing}
                 onClick={() => void pick(n)}
                 aria-pressed={isMine}
-                aria-label={`Card ${n}${isMine ? ', yours' : isTaken ? ', taken' : ''}`}
+                aria-label={`Card ${n}${isMine ? ', yours' : isTaken ? (testTaken.has(n) ? ', taken by a test player' : ', taken') : ''}`}
                 className={`aspect-square min-w-0 rounded-md border text-[11px] font-bold tabular-nums transition-colors ${look} ${isBusy ? 'animate-pulse' : ''}`}
               >
                 {n}
@@ -200,7 +232,7 @@ function RoundBar({ state }: { state: RoomState }) {
       </span>
       <span className="flex items-center gap-1.5">
         <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
-          ● {t('live')} · {state.round.players} {t('players')}
+          ● {t('live')} · <PlayerCount state={state} />
         </span>
         <SoundButton />
       </span>
@@ -453,6 +485,11 @@ function VerticalBoard({ calls }: { calls: number[] }) {
   );
 }
 
+function TestBadge() {
+  const { t } = useI18n();
+  return <span className="block w-fit rounded bg-amber-400 px-1.5 py-0.5 text-[10px] font-black text-amber-950">{t('testWinner')}</span>;
+}
+
 function ResultView({ state, mine, now }: RoomHook) {
   const { t } = useI18n();
   const result = state.result;
@@ -470,6 +507,11 @@ function ResultView({ state, mine, now }: RoomHook) {
       {myWins.length > 0 && (
         <div className="pop w-full rounded-2xl bg-win px-4 py-3 text-center font-display text-lg text-white">{t('youWon', { amount: won.toLocaleString('en-US') })}</div>
       )}
+      {result.carriedOver && result.carriedOver.minor !== '0' && (
+        <p role="note" className="w-full rounded-xl border border-amber-400 bg-amber-400/10 px-3 py-2 text-center text-xs font-bold text-amber-300">
+          {t('testWinNote', { amount: result.carriedOver.birr })}
+        </p>
+      )}
       {result.winners.length === 1 ? (
         <>
           <span className="rounded-full bg-gold px-5 py-1.5 text-xs font-black uppercase tracking-[0.25em] text-gold-ink shadow-lg">{t('grandWinner')}</span>
@@ -477,6 +519,7 @@ function ResultView({ state, mine, now }: RoomHook) {
           <div className="flex flex-col items-center gap-1 text-center">
             <p className="text-xs uppercase tracking-[0.3em] text-gold/80">— {t('winnerIs')} —</p>
             <p className="font-display text-3xl uppercase">{result.winners[0].name}</p>
+            {result.winners[0].test && <TestBadge />}
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted">
               {t('ticket')} #{result.winners[0].cardNo} · {result.prizePerWinner.birr} ETB
             </p>
@@ -514,6 +557,7 @@ function ResultView({ state, mine, now }: RoomHook) {
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gold text-sm font-black text-gold-ink">{w.name.slice(0, 1).toUpperCase()}</span>
                   <span className="min-w-0 leading-tight">
                     <span className="block truncate text-sm font-bold">{w.name}</span>
+                    {w.test && <TestBadge />}
                     <span className="text-[10px] text-gold">
                       {t('ticket')} #{w.cardNo}
                     </span>
