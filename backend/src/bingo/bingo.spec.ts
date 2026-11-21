@@ -67,8 +67,6 @@ describe('settle', () => {
       topUpMinor: 0n,
       houseCutMinor: 109_400n,
       prizePerWinnerMinor: 437_600n,
-      carryInMinor: 0n,
-      toRolloverMinor: 0n,
     });
   });
 
@@ -90,17 +88,5 @@ describe('settle', () => {
     // 200 cards: the guarantee no longer matters.
     const high = settle({ stakeTotalMinor: 200_000n, houseCutBps: 2000, guaranteedMinor: 100_000n, winners: 1 });
     expect(high).toMatchObject({ prizeMinor: 160_000n, topUpMinor: 0n, houseCutMinor: 40_000n });
-  });
-
-  it('adds carry-over without a house cut on it, and carries test players\' share forward', () => {
-    // 60 birr of stakes, 20% cut -> 48; plus 30 carried over -> 78 for one real winner.
-    const one = settle({ stakeTotalMinor: 6000n, houseCutBps: 2000, guaranteedMinor: 0n, winners: 1, carryMinor: 3000n });
-    expect(one).toMatchObject({ prizeMinor: 7800n, houseCutMinor: 1200n, carryInMinor: 3000n, toRolloverMinor: 0n });
-    // Two winners, one of them a test player: each share 39; the test player's 39 goes to the next round.
-    const two = settle({ stakeTotalMinor: 6000n, houseCutBps: 2000, guaranteedMinor: 0n, winners: 2, carryMinor: 3000n, sampleWinners: 1 });
-    expect(two).toMatchObject({ prizePerWinnerMinor: 3900n, toRolloverMinor: 3900n });
-    // Money in = money out: stakes + carry = prize + house.
-    expect(two.prizeMinor + two.houseCutMinor).toBe(6000n + 3000n);
-    expect(() => settle({ stakeTotalMinor: 1n, houseCutBps: 0, guaranteedMinor: 0n, winners: 1, sampleWinners: 2 })).toThrow();
   });
 });

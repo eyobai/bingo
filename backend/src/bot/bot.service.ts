@@ -610,8 +610,8 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private readonly unreachable = new Set<string>();
   /**
-   * A bot can only message people who have pressed Start in it. Test accounts (staff id 1, sample players
-   * 900001…) are not real Telegram users, so this always fails for them; say so once per account.
+   * A bot can only message people who have pressed Start in it. Developer accounts (e.g. staff id 1)
+   * are not real Telegram users, so this always fails for them; say so once per account.
    */
   private sendFailed(chatId: string, e: Error) {
     if (/chat not found|bot was blocked|user is deactivated/i.test(e.message)) {

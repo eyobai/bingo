@@ -66,7 +66,7 @@ enum AccountType {
   PAYMENT_CLEARING
   /// Manual corrections by staff. May go negative.
   ADJUSTMENTS
-  /// Test players' winnings waiting to be added to the next round's prize.
+  /// No longer used (an earlier test feature). Kept so databases that already have it still load.
   ROLLOVER
 }
 
@@ -252,10 +252,6 @@ model Round {
   houseCutMinor    BigInt      @default(0) @map("house_cut_minor")
   topUpMinor       BigInt      @default(0) @map("top_up_minor")
   prizePerWinnerMinor BigInt   @default(0) @map("prize_per_winner_minor")
-  /// Carry-over from earlier rounds (test players' winnings) included in this round's prize.
-  carryInMinor     BigInt      @default(0) @map("carry_in_minor")
-  /// Test players' share of this round's prize, carried to the next round.
-  carryOutMinor    BigInt      @default(0) @map("carry_out_minor")
   createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   room    Room     @relation(fields: [roomId], references: [id])

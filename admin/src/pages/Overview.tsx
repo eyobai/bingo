@@ -3,7 +3,6 @@ import type { Money } from '../api';
 import { Badge, Birr, ErrorLine, Panel, Stat, useApi } from '../ui';
 
 interface Summary {
-  testMode?: boolean;
   periodDays: number;
   rounds: number;
   cardsSold: number;
@@ -41,13 +40,6 @@ export function Overview({ go }: { go: (page: string) => void }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {s?.testMode && (
-        <div role="alert" className="rounded-2xl border border-gold bg-gold-soft px-4 py-3 text-sm font-semibold">
-          Sample players are playing right now, and players see "Sample players are also playing". Their winnings are not paid out;
-          they go into the next round's prize. Their test money counts in these numbers. Reset the database before public launch
-          (see DEPLOY.md).
-        </div>
-      )}
       {s && !booksOk && (
         <div role="alert" className="rounded-2xl border border-bad bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">
           The books do not balance (difference {s.ledgerCheck.birr} birr). Stop approving money and investigate before anything else.

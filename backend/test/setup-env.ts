@@ -14,5 +14,3 @@ process.env.FIRST_DEPOSIT_BONUS_MAX_BIRR = '200';
 process.env.REFERRAL_BONUS_BIRR = '10';
 process.env.WELCOME_BONUS_BIRR = '20';
 process.env.REFERRAL_MAX_FRIENDS = '1';
-process.env.TEST_MODE = 'true';
-process.env.TEST_KEY = 'test-key-0123456789abcdef';

@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import * as Joi from 'joi';
 
 /** Every setting the server reads, checked once at startup. A bad value stops the server with a clear message. */
@@ -17,13 +16,6 @@ export const envSchema = Joi.object({
   ADMIN_TELEGRAM_IDS: Joi.string().allow('').default(''),
   /** Lets the browser sign in without Telegram. Development only; refused in production. */
   DEV_LOGIN: Joi.boolean().default(false),
-  /**
-   * Sample players (accounts 900001-999999) for testing on the live server. Always available to whoever runs
-   * scripts/sim-players.mjs on the server: the key is derived from JWT_SECRET unless TEST_KEY is set.
-   * TEST_MODE is no longer needed (kept so old .env files still load).
-   */
-  TEST_MODE: Joi.boolean().default(false),
-  TEST_KEY: Joi.string().allow('').default(''),
   /** Players must share their phone number in the bot before buying cards. */
   REQUIRE_PHONE: Joi.boolean().default(true),
 
@@ -46,7 +38,6 @@ export const envSchema = Joi.object({
   CBE_BIRR_NAME: Joi.string().allow('').default(''),
 }).custom((env: Record<string, unknown>, helpers) => {
   if (env.NODE_ENV === 'production' && env.DEV_LOGIN) return helpers.message({ custom: 'DEV_LOGIN must be false in production' });
-  if (env.TEST_KEY && String(env.TEST_KEY).length < 16) return helpers.message({ custom: 'TEST_KEY must be at least 16 characters' });
   if (env.NODE_ENV === 'production' && !env.BOT_TOKEN) return helpers.message({ custom: 'BOT_TOKEN is required in production' });
   return env;
 });
@@ -64,8 +55,6 @@ export interface AppConfig {
   adminUrl: string;
   adminTelegramIds: Set<string>;
   devLogin: boolean;
-  testMode: boolean;
-  testKey: string;
   requirePhone: boolean;
   cardSetSeed: string;
   resultSeconds: number;
@@ -107,8 +96,6 @@ export function buildConfig(env: Record<string, any>): AppConfig {
         .filter(Boolean),
     ),
     devLogin: env.DEV_LOGIN,
-    testMode: env.TEST_MODE,
-    testKey: env.TEST_KEY || sampleKey(env.JWT_SECRET),
     requirePhone: env.REQUIRE_PHONE,
     cardSetSeed: env.CARD_SET_SEED,
     resultSeconds: env.RESULT_SECONDS,
@@ -130,8 +117,3 @@ export function buildConfig(env: Record<string, any>): AppConfig {
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
-
-/** Key for the sample-player endpoints. Only someone who knows JWT_SECRET (i.e. the server) can compute it. */
-export function sampleKey(jwtSecret: string): string {
-  return createHmac('sha256', String(jwtSecret)).update('sample-players').digest('hex');
-}

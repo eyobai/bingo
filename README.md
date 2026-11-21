@@ -20,7 +20,6 @@ From the `bingo` folder itself:
 | `npm run install:all` | Installs backend, game screen and dashboard |
 | `npm run build` | Builds the game screen and the dashboard |
 | `npm start` | Starts the server (same as `npm run start:dev` in `backend`) |
-| `npm run sim:players` | Starts the sample players (options after `--`, e.g. `npm run sim:players -- --players 20`) |
 | `npm test` | Runs all backend tests |
 
 ## Run locally
@@ -49,23 +48,6 @@ npm run dev                     # http://localhost:5173 (proxies /api and /socke
 Outside Telegram the app shows a developer sign-in (only when `DEV_LOGIN=true` on the server and
 `VITE_DEV_LOGIN=true` in the app). Each Telegram id is a separate player; ids listed in
 `ADMIN_TELEGRAM_IDS` are staff.
-
-### Sample players (local testing only)
-
-A round needs at least 2 players. To play alone on your computer, start sample players in another terminal:
-
-```bash
-cd backend
-npm run sim:players                          # 10 players, up to 4 cards each round
-npm run sim:players -- --players 25 --max 2
-npm run sim:players -- --players 1 --max 4 --exact   # one player, exactly 4 cards
-```
-
-Each sample player takes 1 to `--max` cards (at most 4, like a real player; `--exact` makes it exactly `--max`).
-They are named "Test 1", "Test 2"…, get test deposits approved automatically, and pick cards in
-every round until you press Ctrl+C. The script signs in through the developer sign-in, which the server
-refuses unless `DEV_LOGIN=true` (and that is refused in production), so it cannot add players to a real
-game. It needs `ADMIN_TELEGRAM_IDS` to include 1 and `TELEBIRR_ACCOUNT`/`TELEBIRR_NAME` to be set.
 
 Tests:
 
@@ -135,7 +117,7 @@ nightly backups.
 
 - **First /start**: choose አማርኛ, Afaan Oromoo or English (the Afaan Oromoo texts need a native speaker's review), then share the phone number with one button (only the player's own
   number is accepted). Registering gives the welcome gift (`WELCOME_BONUS_BIRR`, play wallet, once).
-- **Playing needs a registered phone** (`REQUIRE_PHONE=true`, the default). Developer and sample accounts get a
+- **Playing needs a registered phone** (`REQUIRE_PHONE=true`, the default). Developer sign-in accounts get a
   made-up number automatically.
 - **Menu keyboard** under the message box: Play, Language, Deposit, Withdraw, Balance, Invite friends, How to play.
   The same actions are in Telegram's Menu as `/play`, `/deposit`, `/withdraw`, `/balance`, `/invite`,

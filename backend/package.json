@@ -15,8 +15,7 @@
     "test": "jest",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
-    "sim:players": "node scripts/sim-players.mjs"
+    "db:deploy": "prisma migrate deploy"
   },
   "jest": {
     "moduleFileExtensions": [

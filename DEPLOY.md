@@ -155,33 +155,6 @@ gunzip -c backups/<file>.sql.gz | docker compose exec -T db psql -U bingo -d bin
 docker compose start app
 ```
 
-## Sample players (before launch only)
-
-Nothing to set up: start sample players on the server any time (Ctrl+C stops them):
-
-```bash
-cd ~/bingo/deploy
-docker compose exec app node scripts/sim-players.mjs --players 10 --max 2
-```
-
-While sample players are in a round, the game shows one line to everyone: **🤖 Sample players are also
-playing**. A sample player's win is marked 🤖 and is not paid to anyone: it goes into the next round's prize.
-Sample players only use accounts 900001–999999, and only someone who can run commands on the server can start
-them (the key comes from `JWT_SECRET`).
-
-### Before real players: start clean
-
-```bash
-cd ~/bingo/deploy
-bash backup.sh                      # keep a copy of the test data, just in case
-docker compose down
-docker volume rm bingo_db-data      # deletes the database: all test players, rounds and money
-docker compose up -d
-```
-
-The database is created fresh on start. Your settings, the https certificate and the bot are unaffected;
-staff sign in again the same way.
-
 ## Everyday commands
 
 All from `~/bingo/deploy`:
