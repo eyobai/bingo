@@ -39,6 +39,8 @@ COPY backend/prisma prisma
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && npx prisma generate && npm cache clean --force
 COPY --from=api /src/backend/dist dist
 COPY backend/assets assets
+# Sample-player script, usable only in TEST MODE with the test key.
+COPY backend/scripts scripts
 COPY --from=web /src/miniapp/dist /app/miniapp/dist
 COPY --from=web /src/admin/dist /app/admin/dist
 USER node

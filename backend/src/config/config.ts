@@ -16,6 +16,12 @@ export const envSchema = Joi.object({
   ADMIN_TELEGRAM_IDS: Joi.string().allow('').default(''),
   /** Lets the browser sign in without Telegram. Development only; refused in production. */
   DEV_LOGIN: Joi.boolean().default(false),
+  /**
+   * Test players on a live server, before launch. Only accounts 900001-999999 can be created, only with
+   * TEST_KEY, and the game shows a TEST MODE banner. Turn off (and reset the database) before real players.
+   */
+  TEST_MODE: Joi.boolean().default(false),
+  TEST_KEY: Joi.string().allow('').default(''),
   /** Players must share their phone number in the bot before buying cards. */
   REQUIRE_PHONE: Joi.boolean().default(true),
 
@@ -38,6 +44,9 @@ export const envSchema = Joi.object({
   CBE_BIRR_NAME: Joi.string().allow('').default(''),
 }).custom((env: Record<string, unknown>, helpers) => {
   if (env.NODE_ENV === 'production' && env.DEV_LOGIN) return helpers.message({ custom: 'DEV_LOGIN must be false in production' });
+  if (env.TEST_MODE && String(env.TEST_KEY).length < 16) {
+    return helpers.message({ custom: 'TEST_MODE needs TEST_KEY of at least 16 characters (openssl rand -hex 16)' });
+  }
   if (env.NODE_ENV === 'production' && !env.BOT_TOKEN) return helpers.message({ custom: 'BOT_TOKEN is required in production' });
   return env;
 });
@@ -55,6 +64,8 @@ export interface AppConfig {
   adminUrl: string;
   adminTelegramIds: Set<string>;
   devLogin: boolean;
+  testMode: boolean;
+  testKey: string;
   requirePhone: boolean;
   cardSetSeed: string;
   resultSeconds: number;
@@ -96,6 +107,8 @@ export function buildConfig(env: Record<string, any>): AppConfig {
         .filter(Boolean),
     ),
     devLogin: env.DEV_LOGIN,
+    testMode: env.TEST_MODE,
+    testKey: env.TEST_KEY,
     requirePhone: env.REQUIRE_PHONE,
     cardSetSeed: env.CARD_SET_SEED,
     resultSeconds: env.RESULT_SECONDS,

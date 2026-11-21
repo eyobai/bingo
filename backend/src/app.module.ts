@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminController, StaffAuthController } from './admin.controller';
+import { TestModeController } from './test-mode.controller';
 import { StaffAuthService } from './auth/staff-auth.service';
 import { AuthController, GameController, MeController, PaymentsController } from './api.controllers';
 import { GameGateway } from './bingo/game.gateway';
@@ -45,7 +46,7 @@ const config = loadConfig();
 
 @Module({
   imports: [PrismaModule, NotifyModule, JwtModule.register({ secret: config.jwtSecret })],
-  controllers: [HealthController, AuthController, MeController, GameController, PaymentsController, AdminController, StaffAuthController],
+  controllers: [HealthController, AuthController, MeController, GameController, PaymentsController, AdminController, StaffAuthController, TestModeController],
   providers: [
     { provide: APP_CONFIG, useValue: config },
     AuthGuard,

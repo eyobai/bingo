@@ -3,6 +3,7 @@ import type { Money } from '../api';
 import { Badge, Birr, ErrorLine, Panel, Stat, useApi } from '../ui';
 
 interface Summary {
+  testMode?: boolean;
   periodDays: number;
   rounds: number;
   cardsSold: number;
@@ -40,6 +41,12 @@ export function Overview({ go }: { go: (page: string) => void }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {s?.testMode && (
+        <div role="alert" className="rounded-2xl border border-gold bg-gold-soft px-4 py-3 text-sm font-semibold">
+          TEST MODE is on: test players can join and their test money counts in these numbers. Turn it off (TEST_MODE=false) and reset the
+          database before real players. See DEPLOY.md.
+        </div>
+      )}
       {s && !booksOk && (
         <div role="alert" className="rounded-2xl border border-bad bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">
           The books do not balance (difference {s.ledgerCheck.birr} birr). Stop approving money and investigate before anything else.

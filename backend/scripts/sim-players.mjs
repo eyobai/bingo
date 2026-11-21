@@ -11,6 +11,10 @@
  *   node scripts/sim-players.mjs --players 25 --max 2
  *   node scripts/sim-players.mjs --players 1 --max 4 --exact      one player with exactly 4 cards
  *
+ * On a live server in TEST MODE (TEST_MODE=true and TEST_KEY in deploy/.env), pass the key instead:
+ *   node scripts/sim-players.mjs --test-key <TEST_KEY>
+ * Then no developer sign-in or staff account is needed: test players get test money directly.
+ *
  * Options:
  *   --players N   how many sample players (default 10)
  *   --max N       most cards each one takes per round (default 4)
@@ -26,6 +30,7 @@ const args = Object.fromEntries(
   argv.reduce((acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]?.startsWith('--') ? 'true' : all[i + 1]]] : acc), []),
 );
 const EXACT = argv.includes('--exact');
+const TEST_KEY = args['test-key'] ?? process.env.TEST_KEY ?? '';
 const API = (args.api ?? 'http://localhost:3000').replace(/\/$/, '') + '/api';
 const PLAYERS = Number(args.players ?? 10);
 const MAX = Number(args.max ?? 4);
@@ -39,7 +44,11 @@ const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 async function call(path, token, body, method) {
   const res = await fetch(API + path, {
     method: method ?? (body ? 'POST' : 'GET'),
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(TEST_KEY ? { 'x-test-key': TEST_KEY } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => null);
@@ -53,6 +62,16 @@ async function call(path, token, body, method) {
 }
 
 async function devLogin(telegramId, firstName) {
+  if (TEST_KEY) {
+    try {
+      return (await call('/test/login', null, { telegramId, firstName })).token;
+    } catch (e) {
+      if (e.status === 404) console.error('TEST MODE is off on the server. Set TEST_MODE=true and TEST_KEY in deploy/.env, then docker compose up -d.');
+      else if (e.code === 'BAD_TEST_KEY') console.error('Wrong test key: use the TEST_KEY from deploy/.env.');
+      else console.error(e.message);
+      process.exit(1);
+    }
+  }
   try {
     return (await call('/auth/dev', null, { telegramId, firstName })).token;
   } catch (e) {
@@ -68,6 +87,10 @@ async function topUp(token, adminToken, receiverName, n) {
   const wallet = (await call('/me/wallet', token)).balances;
   const total = Number(wallet.main.minor) + Number(wallet.play.minor);
   if (total >= 10_000) return; // 100 birr or more: enough for now
+  if (TEST_KEY) {
+    await call('/test/fund', token, {});
+    return;
+  }
   const ref = `SIM${Date.now().toString(36)}${n}`.toUpperCase().slice(0, 18);
   const sms = `Dear Test You have transferred ETB 500.00 to ${receiverName} (2519****0000) on 01/01/2026 12:00:00. Your transaction number is ${ref}.`;
   const deposit = await call('/payments/deposits', token, { method: 'TELEBIRR', smsText: sms });
@@ -82,19 +105,23 @@ async function main() {
     process.exit(1);
   }
 
-  const adminToken = await devLogin(ADMIN_ID, 'Staff');
-  const me = await call('/me', adminToken);
-  if (me.user.role !== 'ADMIN') {
-    console.error(`Telegram id ${ADMIN_ID} is not staff. Add it to ADMIN_TELEGRAM_IDS in backend/.env and restart.`);
-    process.exit(1);
+  let adminToken = null;
+  let receiverName = '';
+  if (!TEST_KEY) {
+    adminToken = await devLogin(ADMIN_ID, 'Staff');
+    const me = await call('/me', adminToken);
+    if (me.user.role !== 'ADMIN') {
+      console.error(`Telegram id ${ADMIN_ID} is not staff. Add it to ADMIN_TELEGRAM_IDS in backend/.env and restart.`);
+      process.exit(1);
+    }
+    const options = await call('/payments/options', adminToken);
+    const telebirr = options.methods.find((m) => m.method === 'TELEBIRR');
+    if (!telebirr) {
+      console.error('Set TELEBIRR_ACCOUNT and TELEBIRR_NAME in backend/.env so test deposits can be made.');
+      process.exit(1);
+    }
+    receiverName = (telebirr.accountName || 'TEST').toUpperCase();
   }
-  const options = await call('/payments/options', adminToken);
-  const telebirr = options.methods.find((m) => m.method === 'TELEBIRR');
-  if (!telebirr) {
-    console.error('Set TELEBIRR_ACCOUNT and TELEBIRR_NAME in backend/.env so test deposits can be made.');
-    process.exit(1);
-  }
-  const receiverName = (telebirr.accountName || 'TEST').toUpperCase();
 
   console.log(`Creating ${PLAYERS} sample players…`);
   const players = [];

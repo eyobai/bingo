@@ -28,10 +28,27 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
     return <div className="flex h-64 items-center justify-center text-muted">…</div>;
   }
   const { status } = state.round;
-  if (status === 'SELECTING') return <SelectView {...room} state={state} onNeedMoney={onNeedMoney} toast={toast} />;
-  if (status === 'DRAWING') return <PlayView {...room} state={state} />;
-  if (status === 'FINISHED') return <ResultView {...room} state={state} />;
-  return <CancelledView state={state} now={room.now} hadCards={room.mine.length > 0} />;
+  const view =
+    status === 'SELECTING' ? (
+      <SelectView {...room} state={state} onNeedMoney={onNeedMoney} toast={toast} />
+    ) : status === 'DRAWING' ? (
+      <PlayView {...room} state={state} />
+    ) : status === 'FINISHED' ? (
+      <ResultView {...room} state={state} />
+    ) : (
+      <CancelledView state={state} now={room.now} hadCards={room.mine.length > 0} />
+    );
+  if (state.testMode) {
+    return (
+      <>
+        <div role="note" className="bg-amber-400 px-3 py-1 text-center text-[11px] font-black uppercase tracking-wider text-amber-950">
+          Test mode · test players · not real money
+        </div>
+        {view}
+      </>
+    );
+  }
+  return view;
 }
 
 type RoomHook = ReturnType<typeof useRoom> & { state: RoomState };

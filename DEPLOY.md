@@ -155,6 +155,36 @@ gunzip -c backups/<file>.sql.gz | docker compose exec -T db psql -U bingo -d bin
 docker compose start app
 ```
 
+## Test players (before launch only)
+
+To fill rounds with sample players on the live server while you test:
+
+1. In `deploy/.env` set `TEST_MODE=true` and `TEST_KEY=` followed by the output of `openssl rand -hex 16`.
+2. `docker compose up -d`
+3. Start sample players (Ctrl+C stops them):
+   ```bash
+   docker compose exec app node scripts/sim-players.mjs
+   docker compose exec app node scripts/sim-players.mjs --players 20 --max 2
+   ```
+
+Test mode only creates test accounts (Telegram ids 900001–999999), needs the test key, and gives them test
+money directly; nobody can use it to sign in as a real player or as staff. The game and the dashboard show a
+**TEST MODE** banner while it is on.
+
+### Before real players: switch off and start clean
+
+```bash
+cd ~/bingo/deploy
+bash backup.sh                      # keep a copy of the test data, just in case
+nano .env                           # TEST_MODE=false
+docker compose down
+docker volume rm bingo_db-data      # deletes the database: all test players, rounds and money
+docker compose up -d
+```
+
+The database is created fresh on start. Your settings, the https certificate and the bot are unaffected;
+staff sign in again the same way.
+
 ## Everyday commands
 
 All from `~/bingo/deploy`:

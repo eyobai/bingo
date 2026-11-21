@@ -120,6 +120,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const finished = round.status === RoundStatus.FINISHED;
     return {
       serverTime: new Date().toISOString(),
+      testMode: this.config.testMode,
       room: {
         id: room.id,
         name: room.name,

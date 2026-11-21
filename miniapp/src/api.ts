@@ -32,6 +32,8 @@ export interface Winner {
 
 export interface RoomState {
   serverTime: string;
+  /** The server is in TEST MODE: test players may be in the game. */
+  testMode?: boolean;
   room: {
     id: string;
     name: string;
