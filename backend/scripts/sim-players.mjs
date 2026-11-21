@@ -25,12 +25,18 @@
  * Stop with Ctrl+C.
  */
 
+import { createHmac } from 'node:crypto';
+
 const argv = process.argv.slice(2);
 const args = Object.fromEntries(
   argv.reduce((acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]?.startsWith('--') ? 'true' : all[i + 1]]] : acc), []),
 );
 const EXACT = argv.includes('--exact');
-const TEST_KEY = args['test-key'] ?? process.env.TEST_KEY ?? '';
+// On the server the key is worked out from JWT_SECRET, the same way the app does it (src/config/config.ts).
+const TEST_KEY =
+  args['test-key'] ??
+  (process.env.TEST_KEY ||
+    (process.env.JWT_SECRET ? createHmac('sha256', process.env.JWT_SECRET).update('sample-players').digest('hex') : ''));
 const API = (args.api ?? 'http://localhost:3000').replace(/\/$/, '') + '/api';
 const PLAYERS = Number(args.players ?? 10);
 const MAX = Number(args.max ?? 4);
@@ -66,7 +72,7 @@ async function devLogin(telegramId, firstName) {
     try {
       return (await call('/test/login', null, { telegramId, firstName })).token;
     } catch (e) {
-      if (e.status === 404) console.error('TEST MODE is off on the server. Set TEST_MODE=true and TEST_KEY in deploy/.env, then docker compose up -d.');
+      if (e.status === 404) console.error('This server is too old for sample players: update it (git pull && docker compose up -d --build).');
       else if (e.code === 'BAD_TEST_KEY') console.error('Wrong test key: use the TEST_KEY from deploy/.env.');
       else console.error(e.message);
       process.exit(1);

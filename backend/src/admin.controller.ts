@@ -108,7 +108,7 @@ export class AdminController {
     });
     const s = rounds._sum;
     return {
-      testMode: this.game.publicState(this.game.roomIds()[0] ?? '')?.testMode ?? false,
+      testMode: this.game.roomIds().some((id) => this.game.publicState(id)?.testMode),
       periodDays: days,
       rounds: rounds._count,
       cardsSold: s.cardsSold ?? 0,

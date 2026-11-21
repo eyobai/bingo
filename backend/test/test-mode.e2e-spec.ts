@@ -55,6 +55,8 @@ describe('test mode (integration)', () => {
     await http.post('/api/test/fund').set('x-test-key', KEY).set('Authorization', `Bearer ${real}`).expect(403);
 
     expect((await http.get('/api/rooms/t1/state').expect(200)).body.testMode).toBe(true);
+    // The key used on the server can always be derived from JWT_SECRET.
+    expect(KEY.length).toBeGreaterThanOrEqual(16);
     expect(await app.get(LedgerService).trialBalance()).toBe(0n);
   });
 

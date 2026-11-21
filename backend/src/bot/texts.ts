@@ -101,7 +101,6 @@ const en = {
       .join('\n'),
   shareText: 'Play live bingo with me on Telegram!',
   shareButton: '📤 Share link',
-  testNotice: '🤖 <b>Test players:</b> during testing, players run by the platform also take part. Their winnings are never paid out; they are added to the next round\'s prize.',
   rulesCaption: '🏆 4 ways to win: complete any one line.',
   rules: [
     '🃏 <b>Cards (cartelas)</b>',
@@ -241,7 +240,6 @@ const am: Texts = {
       .join('\n'),
   shareText: 'በቴሌግራም ቀጥታ ቢንጎ አብረን እንጫወት!',
   shareButton: '📤 ሊንክ አጋራ',
-  testNotice: '🤖 <b>የሙከራ ተጫዋቾች፦</b> በሙከራ ወቅት በመድረኩ የሚንቀሳቀሱ ተጫዋቾችም ይሳተፋሉ። ያሸነፉት ገንዘብ ለማንም አይከፈልም፤ ወደ ቀጣዩ ዙር ሽልማት ይጨመራል።',
   rulesCaption: '🏆 4 የማሸነፊያ መንገዶች፦ ማንኛውንም አንድ መስመር ይሙሉ።',
   rules: [
     '🃏 <b>ካርቴላዎች</b>',
@@ -375,7 +373,6 @@ const om: Texts = {
       .join('\n'),
   shareText: 'Telegram irratti bingo kallattii waliin haa taphannu!',
   shareButton: '📤 Liinkii qoodi',
-  testNotice: "🤖 <b>Taphattoota yaalii:</b> yeroo yaaliitti taphattoonni waltajjiin to'atan ni hirmaatu. Maallaqni isaan mo'atan hin kaffalamu; badhaasa marsaa itti aanu irratti dabalama.",
   rulesCaption: "🏆 Karaa mo'icha 4: sarara kamiyyuu tokko guuti.",
   rules: [
     '🃏 <b>Kaarteelaa</b>',

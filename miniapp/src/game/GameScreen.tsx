@@ -53,7 +53,7 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
 function TestNotice() {
   const { t } = useI18n();
   return (
-    <div role="note" className="bg-amber-400 px-3 py-1.5 text-center text-[11px] font-bold leading-snug text-amber-950">
+    <div role="note" className="bg-amber-400 px-3 py-1 text-center text-[11px] font-bold text-amber-950">
       {t('testNotice')}
     </div>
   );

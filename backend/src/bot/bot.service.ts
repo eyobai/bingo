@@ -401,8 +401,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     }
     if (action === 'rules') {
       await this.sendRulesPicture(ctx, t.rulesCaption);
-      const rules = this.config.testMode ? `${t.rules}\n\n${t.testNotice}` : t.rules;
-      await ctx.reply(rules, { parse_mode: 'HTML', reply_markup: this.playButton(user.language) });
+      await ctx.reply(t.rules, { parse_mode: 'HTML', reply_markup: this.playButton(user.language) });
       return;
     }
     if (!(await this.requireRegistered(ctx, user))) return;

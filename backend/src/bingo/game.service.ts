@@ -127,7 +127,8 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const finished = round.status === RoundStatus.FINISHED;
     return {
       serverTime: new Date().toISOString(),
-      testMode: this.config.testMode,
+      // True while sample players are in this round: the game shows "sample players are also playing".
+      testMode: testCards.length > 0,
       room: {
         id: room.id,
         name: room.name,

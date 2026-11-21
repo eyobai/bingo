@@ -155,35 +155,25 @@ gunzip -c backups/<file>.sql.gz | docker compose exec -T db psql -U bingo -d bin
 docker compose start app
 ```
 
-## Test players (before launch only)
+## Sample players (before launch only)
 
-To fill rounds with sample players on the live server while you test:
+Nothing to set up: start sample players on the server any time (Ctrl+C stops them):
 
-1. In `deploy/.env` set `TEST_MODE=true` and `TEST_KEY=` followed by the output of `openssl rand -hex 16`.
-2. `docker compose up -d`
-3. Start sample players (Ctrl+C stops them):
-   ```bash
-   docker compose exec app node scripts/sim-players.mjs
-   docker compose exec app node scripts/sim-players.mjs --players 20 --max 2
-   ```
+```bash
+cd ~/bingo/deploy
+docker compose exec app node scripts/sim-players.mjs --players 10 --max 2
+```
 
-Test mode only creates test accounts (Telegram ids 900001–999999), needs the test key, and gives them test
-money directly; nobody can use it to sign in as a real player or as staff.
+While sample players are in a round, the game shows one line to everyone: **🤖 Sample players are also
+playing**. A sample player's win is marked 🤖 and is not paid to anyone: it goes into the next round's prize.
+Sample players only use accounts 900001–999999, and only someone who can run commands on the server can start
+them (the key comes from `JWT_SECRET`).
 
-Real players can play in the same rooms, and they are told about it:
-
-- Every game screen shows a notice that platform test players are taking part, and the player count shows them
-  separately (e.g. `12 players · 5 🤖`). Cards taken by test players have a dashed outline.
-- A winning test player is marked **🤖 Test player**. Their share of the prize is **not paid to anyone**: it goes
-  into the next round's prize (shown as "+X ETB carried over"), so the platform never keeps it.
-- The bot's rules (`/rules`) include a line about test players, and the dashboard shows a banner.
-
-### Before real players: switch off and start clean
+### Before real players: start clean
 
 ```bash
 cd ~/bingo/deploy
 bash backup.sh                      # keep a copy of the test data, just in case
-nano .env                           # TEST_MODE=false
 docker compose down
 docker volume rm bingo_db-data      # deletes the database: all test players, rounds and money
 docker compose up -d

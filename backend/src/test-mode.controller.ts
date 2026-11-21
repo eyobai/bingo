@@ -38,13 +38,10 @@ export class TestModeController implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    if (this.config.testMode) {
-      this.logger.warn('TEST MODE IS ON: test players can join. Turn it off and reset the database before real players.');
-    }
+    this.logger.log('Sample players can join with scripts/sim-players.mjs; the game tells everyone when they are playing.');
   }
 
   private check(key: string | undefined) {
-    if (!this.config.testMode) throw new AppError(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'Not found.');
     const given = Buffer.from(String(key ?? ''));
     const expected = Buffer.from(this.config.testKey);
     if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
