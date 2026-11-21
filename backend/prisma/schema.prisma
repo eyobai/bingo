@@ -157,6 +157,8 @@ model Deposit {
   reviewedById String?       @map("reviewed_by_id") @db.Uuid
   reviewedAt   DateTime?     @map("reviewed_at") @db.Timestamptz(3)
   note         String?       @db.VarChar(255)
+  /// The bot's "we are checking your payment" message, updated when staff approve or reject.
+  botMessageId Int?          @map("bot_message_id")
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation("DepositUser", fields: [userId], references: [id])

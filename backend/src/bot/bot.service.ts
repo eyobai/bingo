@@ -367,7 +367,9 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
         try {
           const d = await this.payments.submitDeposit(user.id, f.method, text);
           this.flows.delete(ctx.chat.id);
-          await ctx.reply(t.depositReceived(money(d.amountMinor).birr, escape(d.txRef)), { parse_mode: 'HTML', reply_markup: this.mainMenu(user.language) });
+          // No keyboard on this message, so it can be edited later to show "approved" or "not approved".
+          const sent = await ctx.reply(t.depositReceived(money(d.amountMinor).birr, escape(d.txRef)), { parse_mode: 'HTML' });
+          await this.prisma.deposit.update({ where: { id: d.id }, data: { botMessageId: sent.message_id } }).catch(() => undefined);
         } catch (e) {
           await ctx.reply(e instanceof AppError ? `⚠️ ${e.message}` : t.error);
         }
@@ -669,6 +671,13 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     const u = await this.prisma.user.findUnique({ where: { id: d.userId } });
     if (!u) return;
     const t = textsFor(u.language);
+    // Turn the earlier "we are checking your payment" message into the result.
+    const row = await this.prisma.deposit.findUnique({ where: { id: d.id }, select: { botMessageId: true } });
+    if (row?.botMessageId && this.bot) {
+      const amount = money(d.amountMinor).birr;
+      const status = d.status === 'APPROVED' ? t.depositCheckedOk(amount, escape(d.txRef)) : t.depositCheckedNo(amount, escape(d.txRef));
+      await this.bot.api.editMessageText(u.telegramId.toString(), row.botMessageId, status, { parse_mode: 'HTML' }).catch(() => undefined);
+    }
     const text =
       d.status === 'APPROVED'
         ? t.depositApproved(money(d.amountMinor).birr, d.bonusMinor > 0n ? money(d.bonusMinor).birr : null)

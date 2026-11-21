@@ -144,6 +144,8 @@ const en = {
       .join('\n'),
   depositReceived: (amount: string, ref: string) =>
     `✅ Received. Your deposit of <b>${amount} birr</b> (ref ${ref}) is being checked. You will get a message when it is added.`,
+  depositCheckedOk: (amount: string, ref: string) => `✅ <b>Approved.</b> Your deposit of <b>${amount} birr</b> (ref ${ref}) has been added to your wallet.`,
+  depositCheckedNo: (amount: string, ref: string) => `❌ <b>Not approved.</b> Your deposit of ${amount} birr (ref ${ref}) was not added.`,
   depositApproved: (amount: string, bonus: string | null) =>
     `✅ Deposit approved: <b>+${amount} birr</b>` + (bonus ? `\n🎁 First-deposit bonus: <b>+${bonus} birr</b> (play wallet)` : '') + '\n\nGood luck!',
   depositRejected: (ref: string, note: string | null) =>
@@ -282,6 +284,8 @@ const am: Texts = {
       .filter(Boolean)
       .join('\n'),
   depositReceived: (amount, ref) => `✅ ደርሶናል። የ<b>${amount} ብር</b> ማስገቢያዎ (ref ${ref}) እየተረጋገጠ ነው። ሲገባ መልዕክት ይደርስዎታል።`,
+  depositCheckedOk: (amount, ref) => `✅ <b>ጸድቋል።</b> የ<b>${amount} ብር</b> ማስገቢያዎ (ref ${ref}) ወደ ሂሳብዎ ገብቷል።`,
+  depositCheckedNo: (amount, ref) => `❌ <b>አልጸደቀም።</b> የ${amount} ብር ማስገቢያዎ (ref ${ref}) አልገባም።`,
   depositApproved: (amount, bonus) =>
     `✅ ገንዘብዎ ገብቷል፦ <b>+${amount} ብር</b>` + (bonus ? `\n🎁 የመጀመሪያ ማስገቢያ ቦነስ፦ <b>+${bonus} ብር</b> (መጫወቻ ሂሳብ)` : '') + '\n\nመልካም ዕድል!',
   depositRejected: (ref, note) => `❌ ማስገቢያዎ (ref ${ref}) አልተቀበለም${note ? `፦ ${note}` : ''}። ገንዘቡን ልከው ከሆነ ድጋፍ ያግኙ።`,
@@ -415,6 +419,8 @@ const om: Texts = {
       .filter(Boolean)
       .join('\n'),
   depositReceived: (amount, ref) => `✅ Nu gaheera. Galchiin kee <b>qarshii ${amount}</b> (ref ${ref}) mirkanaa'aa jira. Yeroo galu ergaan siif dhufa.`,
+  depositCheckedOk: (amount, ref) => `✅ <b>Mirkanaa'eera.</b> Galchiin kee <b>qarshii ${amount}</b> (ref ${ref}) waaleetii keetti galeera.`,
+  depositCheckedNo: (amount, ref) => `❌ <b>Hin mirkanoofne.</b> Galchiin kee qarshii ${amount} (ref ${ref}) hin galle.`,
   depositApproved: (amount, bonus) =>
     `✅ Maallaqni kee galeera: <b>+qarshii ${amount}</b>` + (bonus ? `\n🎁 Boonasii galchii jalqabaa: <b>+qarshii ${bonus}</b> (waaleetii boonasii)` : '') + '\n\nCarraa gaarii!',
   depositRejected: (ref, note) => `❌ Galchiin kee (ref ${ref}) hin fudhatamne${note ? `: ${note}` : ''}. Maallaqa ergiteetta yoo ta'e deeggarsa quunnami.`,
