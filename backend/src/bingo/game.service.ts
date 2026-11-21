@@ -177,6 +177,13 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         this.assertSelling(round);
         const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
         if (user.isBlocked) throw new AppError(HttpStatus.FORBIDDEN, 'BLOCKED', 'Your account is blocked. Contact support.');
+        if (this.config.requirePhone && !user.phone) {
+          throw new AppError(
+            HttpStatus.FORBIDDEN,
+            'PHONE_REQUIRED',
+            'Register first: open the bot, press Start and share your phone number. / መጀመሪያ ይመዝገቡ፦ ቦቱን ከፍተው ስልክ ቁጥርዎን ያጋሩ።',
+          );
+        }
         // One query answers both "how many do I hold" and "is any of these taken".
         const relevant = await tx.card.findMany({
           where: { roundId, OR: [{ userId }, { cardNo: { in: unique } }] },

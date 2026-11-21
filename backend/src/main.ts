@@ -32,6 +32,8 @@ export function setupApp(app: INestApplication) {
       frameguard: false,
     }),
   );
+  // Room for a promo picture in a dashboard broadcast (base64); everything else is small.
+  (app as NestExpressApplication).useBodyParser('json', { limit: '8mb' });
   app.enableCors({ origin: config.corsOrigins.length ? config.corsOrigins : true });
   app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));

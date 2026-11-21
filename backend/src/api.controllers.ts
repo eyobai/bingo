@@ -79,7 +79,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async dev(@Body() body: DevLoginDto) {
     if (!this.config.devLogin) throw new AppError(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'Not found.');
-    const { user } = await this.users.fromTelegram({ id: body.telegramId, first_name: body.firstName }, body.startParam);
+    let { user } = await this.users.fromTelegram({ id: body.telegramId, first_name: body.firstName }, body.startParam);
+    // Test accounts have no Telegram to share a number from; give them a made-up one so they can play.
+    if (!user.phone) {
+      await this.users.registerPhone(user.id, `+2519${String(body.telegramId).padStart(8, '0').slice(-8)}`);
+      user = { ...user, phone: 'test' };
+    }
     return this.session(user);
   }
 

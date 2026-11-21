@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { Matches } from 'class-validator';
 import { StaffAuthService } from './auth/staff-auth.service';
+import { BotService } from './bot/bot.service';
 import { MAX_CARD_POOL } from './bingo/game.service';
 import { WalletService } from './wallet/wallet.service';
 import { AccountType, DepositStatus, Prisma, TxType, WithdrawalStatus } from '@prisma/client';
@@ -35,6 +36,14 @@ class AdjustDto {
   @Matches(/^-?\d{1,7}$/, { message: 'Amount is a whole number of birr, e.g. 50 or -50' }) amountBirr!: string;
   @IsString() @Length(3, 200) reason!: string;
 }
+class BroadcastDto {
+  @IsString() @Length(1, 4000) text!: string;
+  /** Optional picture as base64 (JPEG or PNG), at most about 5 MB. */
+  @IsOptional() @IsString() @Length(0, 7_000_000) imageBase64?: string;
+  @IsBoolean() playButton!: boolean;
+  /** true = send only to the staff member who asked (a test). */
+  @IsBoolean() testOnly!: boolean;
+}
 class RoomUpdateDto {
   @IsOptional() @IsString() @Length(2, 60) name?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10_000) stakeBirr?: number;
@@ -58,6 +67,7 @@ export class AdminController {
     private readonly ledger: LedgerService,
     private readonly game: GameService,
     private readonly wallet: WalletService,
+    private readonly bot: BotService,
   ) {}
 
   @Get('summary')
@@ -291,6 +301,29 @@ export class AdminController {
       );
     });
     return this.wallet.balances(id);
+  }
+
+  @Get('broadcast')
+  async broadcastInfo() {
+    const audience = await this.prisma.user.count({ where: { isBlocked: false } });
+    return { audience, last: this.bot.broadcastStatus() };
+  }
+
+  /** Sends a message to all players (or only to you, as a test). Pictures are sent with the text as caption. */
+  @Post('broadcast')
+  @HttpCode(HttpStatus.OK)
+  async broadcast(@CurrentUser() staff: AuthUser, @Body() body: BroadcastDto) {
+    const photo = body.imageBase64 ? Buffer.from(body.imageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64') : undefined;
+    if (photo && photo.length > 5 * 1024 * 1024) throw new AppError(HttpStatus.BAD_REQUEST, 'IMAGE_TOO_BIG', 'The picture must be under 5 MB.');
+    if (photo && body.text.length > 1024) {
+      throw new AppError(HttpStatus.BAD_REQUEST, 'TEXT_TOO_LONG', 'With a picture, Telegram allows at most 1024 characters of text.');
+    }
+    let onlyTo: string | undefined;
+    if (body.testOnly) {
+      const me = await this.prisma.user.findUniqueOrThrow({ where: { id: staff.id } });
+      onlyTo = me.telegramId.toString();
+    }
+    return this.bot.broadcast({ text: body.text, photo, playButton: body.playButton, onlyTo });
   }
 
   /** Not used by the game; handy to check the engine is alive. */

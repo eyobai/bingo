@@ -113,6 +113,21 @@ that never changes, use a free ngrok static domain or a named Cloudflare tunnel 
    every deposit and withdrawal with Approve / Reject buttons.
 5. Set `TELEBIRR_ACCOUNT` / `TELEBIRR_NAME` (and CBE Birr if used) to the account players pay into.
 
+## The bot
+
+- **First /start**: choose አማርኛ or English, then share the phone number with one button (only the player's own
+  number is accepted). Registering gives the welcome gift (`WELCOME_BONUS_BIRR`, play wallet, once).
+- **Playing needs a registered phone** (`REQUIRE_PHONE=true`, the default). Developer and sample accounts get a
+  made-up number automatically.
+- **Menu keyboard** under the message box: Play, Language, Deposit, Withdraw, Balance, Invite friends, How to play.
+  The same actions are in Telegram's Menu as `/play`, `/deposit`, `/withdraw`, `/balance`, `/invite`,
+  `/instructions`, `/language`, `/menu`.
+- **Deposit**: choose Telebirr or CBE Birr, send money, paste the SMS.
+- **Withdraw** step by step: amount → Telebirr or CBE Birr → phone number (or "use my number") → name → confirm.
+- The "What can this bot do?" text and the command list are set in both languages when the server starts.
+  The picture on that screen is set by hand in @BotFather (Edit Bot → Edit Description Picture).
+- Staff: `/admin` (dashboard link), `/myid`, and Approve/Reject buttons on every deposit and withdrawal.
+
 ## Staff dashboard
 
 Build it once (and again after updates): `cd admin && npm install && npm run build`. The server then serves it
@@ -130,6 +145,7 @@ is written in the server window instead.
 | Withdrawals | Requests to pay; mark paid (with your transaction number) after sending, or reject (money returns) |
 | Players | Search, balances, totals, wallet history; block/unblock; correct a balance with a reason |
 | Rounds | Last 50 rounds: cards, stakes, prize, house share, top-up, winning cards |
+| Messages | Promo message to every player through the bot: text, optional picture, optional "Play now" button. Send a test to yourself first; progress shows while it sends (about 20 a second). |
 | Game settings | Card price, house share, guaranteed prize, countdown, ball speed, cards per player, card numbers, minimum cards, on/off. Applies from the next round. |
 
 For development with live reload: `npm run dev` in `admin/` (http://localhost:5174/admin/, proxies to :3000).

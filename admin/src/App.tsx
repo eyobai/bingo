@@ -4,6 +4,7 @@ import { Overview } from './pages/Overview';
 import { Deposits, Withdrawals } from './pages/Payments';
 import { Players } from './pages/Players';
 import { Rounds, Settings } from './pages/GamePages';
+import { Messages } from './pages/Messages';
 import { Button, field, useApi } from './ui';
 
 const PAGES = [
@@ -12,6 +13,7 @@ const PAGES = [
   ['withdrawals', 'Withdrawals'],
   ['players', 'Players'],
   ['rounds', 'Rounds'],
+  ['messages', 'Messages'],
   ['settings', 'Game settings'],
 ] as const;
 type Page = (typeof PAGES)[number][0];
@@ -91,6 +93,7 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
           {page === 'withdrawals' && <Withdrawals openPlayer={openPlayer} />}
           {page === 'players' && <Players openId={playerId} setOpenId={setPlayerId} />}
           {page === 'rounds' && <Rounds />}
+          {page === 'messages' && <Messages />}
           {page === 'settings' && <Settings />}
         </div>
       </main>

@@ -16,6 +16,8 @@ export const envSchema = Joi.object({
   ADMIN_TELEGRAM_IDS: Joi.string().allow('').default(''),
   /** Lets the browser sign in without Telegram. Development only; refused in production. */
   DEV_LOGIN: Joi.boolean().default(false),
+  /** Players must share their phone number in the bot before buying cards. */
+  REQUIRE_PHONE: Joi.boolean().default(true),
 
   CARD_SET_SEED: Joi.string().min(4).default('bingo-cards-v1'),
   RESULT_SECONDS: Joi.number().integer().min(2).max(60).default(8),
@@ -51,6 +53,7 @@ export interface AppConfig {
   adminUrl: string;
   adminTelegramIds: Set<string>;
   devLogin: boolean;
+  requirePhone: boolean;
   cardSetSeed: string;
   resultSeconds: number;
   seedRooms: boolean;
@@ -90,6 +93,7 @@ export function buildConfig(env: Record<string, any>): AppConfig {
         .filter(Boolean),
     ),
     devLogin: env.DEV_LOGIN,
+    requirePhone: env.REQUIRE_PHONE,
     cardSetSeed: env.CARD_SET_SEED,
     resultSeconds: env.RESULT_SECONDS,
     seedRooms: env.SEED_ROOMS,

@@ -81,16 +81,16 @@ describe('bingo platform (integration)', () => {
     // The same SMS cannot be used twice.
     await http.post('/api/payments/deposits').set(auth(bob.token)).send({ method: 'TELEBIRR', smsText: sms('100.00', 'bbbb222222') }).expect(409);
 
-    // First-deposit bonus 20% to the play wallet; Alice also earns 10 birr for inviting Bob.
-    expect(await balances(alice.token)).toMatchObject({ main: { birr: '200' }, play: { birr: '50' } });
-    expect(await balances(bob.token)).toMatchObject({ main: { birr: '100' }, play: { birr: '20' } });
+    // 20 birr welcome gift on registering, 20% first-deposit bonus, and Alice earns 10 birr for inviting Bob.
+    expect(await balances(alice.token)).toMatchObject({ main: { birr: '200' }, play: { birr: '70' } });
+    expect(await balances(bob.token)).toMatchObject({ main: { birr: '100' }, play: { birr: '40' } });
 
     const state = await waitFor(['SELECTING'], 't1');
     const roundNumber = state.round.number;
 
-    // Alice takes cards 1-4 (bonus money first: 50 birr covers all four).
+    // Alice takes cards 1-4 (bonus money first: 70 birr covers all four).
     await http.post('/api/rooms/t1/cards').set(auth(alice.token)).send({ cardNos: [1, 2, 3, 4] }).expect(200);
-    expect(await balances(alice.token)).toMatchObject({ main: { birr: '200' }, play: { birr: '10' } });
+    expect(await balances(alice.token)).toMatchObject({ main: { birr: '200' }, play: { birr: '30' } });
     // A 5th card is over the limit; a taken card cannot be bought.
     await http.post('/api/rooms/t1/cards').set(auth(alice.token)).send({ cardNos: [5] }).expect(422);
     const taken = await http.post('/api/rooms/t1/cards').set(auth(bob.token)).send({ cardNos: [4, 9] }).expect(409);
@@ -99,7 +99,7 @@ describe('bingo platform (integration)', () => {
     await http.post('/api/rooms/t1/cards').set(auth(bob.token)).send({ cardNos: [7, 8, 9] }).expect(200);
     const back = await http.delete('/api/rooms/t1/cards/9').set(auth(bob.token)).expect(200);
     expect(back.body.cards).toEqual([7, 8]);
-    expect(await balances(bob.token)).toMatchObject({ main: { birr: '100' }, play: { birr: '0' } });
+    expect(await balances(bob.token)).toMatchObject({ main: { birr: '100' }, play: { birr: '20' } });
 
     const live = (await http.get('/api/rooms/t1/state').expect(200)).body;
     expect(live.round.taken).toEqual([1, 2, 3, 4, 7, 8]);

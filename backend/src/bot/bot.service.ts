@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { PaymentMethod, Role } from '@prisma/client';
-import type { Deposit, Withdrawal } from '@prisma/client';
-import { Bot, InlineKeyboard, type Context } from 'grammy';
+import type { Deposit, User, Withdrawal } from '@prisma/client';
+import { Bot, InlineKeyboard, InputFile, Keyboard, type Context } from 'grammy';
 import { AppError, money } from '../common/common';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { NotifyService } from '../notify.service';
@@ -9,31 +9,51 @@ import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma.service';
 import { UsersService } from '../users/users.service';
 import { WalletService } from '../wallet/wallet.service';
+import { COMMANDS, TEXTS, localPhone, menuActionFor, textsFor, type BotLang } from './texts';
 
 const METHOD_LABEL: Record<PaymentMethod, string> = { TELEBIRR: 'Telebirr', CBE_BIRR: 'CBE Birr' };
-const SMS_WAIT_MS = 30 * 60_000;
+/** How long the bot waits for the next step of a deposit or withdrawal before forgetting it. */
+const FLOW_TTL_MS = 30 * 60_000;
+/** Telegram allows about 30 messages a second to different chats; stay well below. */
+const BROADCAST_GAP_MS = 45;
 
-const RULES = [
-  '🎱 <b>How to play / እንዴት ይጫወታሉ</b>',
-  '',
-  '1. Open the game and pick up to 4 card numbers before the countdown ends. Each card costs the room stake.',
-  '2. Balls from 1 to 75 are called one by one. B = 1–15, I = 16–30, N = 31–45, G = 46–60, O = 61–75.',
-  '3. Numbers on your cards are marked automatically. The ★ in the middle is free.',
-  '4. The first card to complete a full row, column or diagonal wins the prize. Cards that finish on the same ball share it.',
-  '',
-  'The prize is the total of all cards minus the house share. Every round can be checked: the ball order is fixed before any card is sold.',
-].join('\n');
+type Flow =
+  | { kind: 'sms'; method: PaymentMethod; until: number }
+  | { kind: 'withdraw'; step: 'amount' | 'method' | 'account' | 'name' | 'confirm'; until: number; amount?: bigint; method?: PaymentMethod; account?: string; name?: string };
+
+export interface BroadcastInput {
+  text: string;
+  photo?: Buffer;
+  playButton: boolean;
+  /** Only this Telegram id (a test send), or everyone. */
+  onlyTo?: string;
+}
+
+export interface BroadcastStatus {
+  id: number;
+  total: number;
+  sent: number;
+  failed: number;
+  done: boolean;
+  startedAt: string;
+  finishedAt: string | null;
+  test: boolean;
+}
+
+const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /**
- * Telegram bot: entry point for players (/start, the Play button, deposits by SMS) and a simple back office
- * for staff (approve/reject buttons on every deposit and withdrawal). Disabled when BOT_TOKEN is empty.
+ * Telegram bot. For players: language choice, registration by sharing the phone number (which unlocks the
+ * game and the welcome gift), a menu keyboard, deposits by SMS and withdrawals step by step. For staff:
+ * approve/reject buttons on every deposit and withdrawal, and broadcasts from the dashboard.
+ * Disabled when BOT_TOKEN is empty.
  */
 @Injectable()
 export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('Bot');
   private bot?: Bot;
-  /** chatId -> payment method the player is sending an SMS for. */
-  private readonly awaitingSms = new Map<number, { method: PaymentMethod; until: number }>();
+  private readonly flows = new Map<number, Flow>();
+  private broadcastState: BroadcastStatus | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -66,14 +86,13 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private async connect(bot: Bot, attempt = 1): Promise<void> {
     try {
-      await bot.api.setMyCommands([
-        { command: 'play', description: 'Play bingo / ቢንጎ ይጫወቱ' },
-        { command: 'deposit', description: 'Add money / ገንዘብ ያስገቡ' },
-        { command: 'balance', description: 'My balance / ቀሪ ሂሳብ' },
-        { command: 'withdraw', description: 'Withdraw / ገንዘብ ያውጡ' },
-        { command: 'invite', description: 'Invite friends / ጓደኛ ይጋብዙ' },
-        { command: 'rules', description: 'How to play / ህጎች' },
-      ]);
+      // Commands and the "What can this bot do?" text, in English (default) and Amharic.
+      await bot.api.setMyCommands(COMMANDS.en);
+      await bot.api.setMyCommands(COMMANDS.am, { language_code: 'am' });
+      await bot.api.setMyDescription(TEXTS.en.description);
+      await bot.api.setMyDescription(TEXTS.am.description, { language_code: 'am' });
+      await bot.api.setMyShortDescription(TEXTS.en.shortDescription);
+      await bot.api.setMyShortDescription(TEXTS.am.shortDescription, { language_code: 'am' });
       if (this.config.bot.miniAppUrl.startsWith('https://')) {
         await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Play', web_app: { url: this.config.bot.miniAppUrl } } });
         this.logger.log(`Play button opens ${this.config.bot.miniAppUrl}`);
@@ -98,36 +117,128 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     await this.bot?.stop();
   }
 
-  private playKeyboard(label = '🎮 Play now / አሁን ይጫወቱ') {
+  // ─── Keyboards ────────────────────────────────────────────────────────────
+
+  private playButton(lang: string) {
     const url = this.config.bot.miniAppUrl;
-    return url.startsWith('https://') ? new InlineKeyboard().webApp(label, url) : undefined;
+    return url.startsWith('https://') ? new InlineKeyboard().webApp(textsFor(lang).playNow, url) : undefined;
   }
+
+  /** The keyboard that stays under the message box. */
+  private mainMenu(lang: string) {
+    const t = textsFor(lang);
+    return new Keyboard()
+      .text(t.btnPlay)
+      .text(t.btnLanguage)
+      .row()
+      .text(t.btnDeposit)
+      .text(t.btnWithdraw)
+      .row()
+      .text(t.btnBalance)
+      .text(t.btnInvite)
+      .row()
+      .text(t.btnRules)
+      .resized()
+      .persistent();
+  }
+
+  private phoneKeyboard(lang: string) {
+    return new Keyboard().requestContact(textsFor(lang).sharePhoneButton).resized().oneTime();
+  }
+
+  private languageKeyboard() {
+    return new InlineKeyboard().text('🇪🇹 አማርኛ', 'lang:am').text('🇬🇧 English', 'lang:en');
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
 
   private async userFor(ctx: Context, startParam?: string) {
     if (!ctx.from) throw new Error('No sender');
-    return (await this.users.fromTelegram(ctx.from, startParam)).user;
+    return this.users.fromTelegram(ctx.from, startParam);
   }
+
+  /** Asks for the phone number when the player has not registered yet. Returns true when they have. */
+  private async requireRegistered(ctx: Context, user: User): Promise<boolean> {
+    if (user.phone) return true;
+    await ctx.reply(textsFor(user.language).needPhone, { reply_markup: this.phoneKeyboard(user.language) });
+    return false;
+  }
+
+  private async showMenu(ctx: Context, user: User) {
+    const t = textsFor(user.language);
+    const b = await this.wallet.balances(user.id);
+    await ctx.reply(t.welcomeBack(escape(user.firstName), b.main.birr, b.play.birr), { parse_mode: 'HTML', reply_markup: this.mainMenu(user.language) });
+  }
+
+  private flow(chatId: number): Flow | undefined {
+    const f = this.flows.get(chatId);
+    if (f && f.until < Date.now()) {
+      this.flows.delete(chatId);
+      return undefined;
+    }
+    return f;
+  }
+
+  // ─── Handlers ─────────────────────────────────────────────────────────────
 
   private register(bot: Bot) {
     bot.command('start', async (ctx) => {
-      const user = await this.userFor(ctx, ctx.match || undefined);
-      const b = await this.wallet.balances(user.id);
-      await ctx.reply(
-        [
-          `👋 Welcome, <b>${escape(user.firstName)}</b>! / እንኳን ደህና መጡ!`,
-          '',
-          `Wallet: <b>${b.main.birr} birr</b> · Bonus: <b>${b.play.birr} birr</b>`,
-          '',
-          'Tap <b>Play now</b> to join the next round. Use /deposit to add money and /rules to learn the game.',
-        ].join('\n'),
-        { parse_mode: 'HTML', reply_markup: this.playKeyboard() },
-      );
+      const { user, created } = await this.userFor(ctx, ctx.match || undefined);
+      this.flows.delete(ctx.chat.id);
+      if (created) {
+        await ctx.reply(TEXTS.en.chooseLanguage, { reply_markup: this.languageKeyboard() });
+        return;
+      }
+      if (!user.phone) {
+        await ctx.reply(textsFor(user.language).sharePhone(escape(user.firstName)), { parse_mode: 'HTML', reply_markup: this.phoneKeyboard(user.language) });
+        return;
+      }
+      await this.showMenu(ctx, user);
     });
 
-    bot.command('play', async (ctx) => {
-      await this.userFor(ctx);
-      await ctx.reply('Open the game to play bingo: / ቢንጎ ለመጫወት ይክፈቱ፦', { reply_markup: this.playKeyboard() });
+    bot.command('language', (ctx) => ctx.reply(TEXTS.en.chooseLanguage, { reply_markup: this.languageKeyboard() }));
+
+    bot.callbackQuery(/^lang:(am|en)$/, async (ctx) => {
+      const lang = ctx.match[1] as BotLang;
+      const { user } = await this.userFor(ctx);
+      await this.users.setLanguage(user.id, lang);
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageText(TEXTS[lang].languageSet).catch(() => undefined);
+      const updated = { ...user, language: lang };
+      if (!updated.phone) {
+        await ctx.reply(TEXTS[lang].sharePhone(escape(user.firstName)), { parse_mode: 'HTML', reply_markup: this.phoneKeyboard(lang) });
+      } else {
+        await this.showMenu(ctx, updated);
+      }
     });
+
+    bot.on('message:contact', async (ctx) => {
+      const { user } = await this.userFor(ctx);
+      const t = textsFor(user.language);
+      const contact = ctx.message.contact;
+      // Only the player's own number counts, not a contact card of someone else.
+      if (contact.user_id !== ctx.from.id) {
+        await ctx.reply(t.notYourContact, { reply_markup: this.phoneKeyboard(user.language) });
+        return;
+      }
+      const digits = contact.phone_number.replace(/\D/g, '');
+      const gift = await this.users.registerPhone(user.id, `+${digits}`);
+      await ctx.reply(t.registered + (gift > 0n ? `\n\n${t.welcomeGift(money(gift).birr)}` : ''), { parse_mode: 'HTML' });
+      await this.showMenu(ctx, { ...user, phone: `+${digits}` });
+    });
+
+    bot.command('menu', async (ctx) => {
+      const { user } = await this.userFor(ctx);
+      if (await this.requireRegistered(ctx, user)) await ctx.reply(textsFor(user.language).menu, { reply_markup: this.mainMenu(user.language) });
+    });
+
+    bot.command('play', (ctx) => this.action(ctx, 'play'));
+    bot.command('deposit', (ctx) => this.action(ctx, 'deposit'));
+    bot.command('withdraw', (ctx) => this.action(ctx, 'withdraw'));
+    bot.command('balance', (ctx) => this.action(ctx, 'balance'));
+    bot.command('invite', (ctx) => this.action(ctx, 'invite'));
+    bot.command(['instructions', 'rules', 'help'], (ctx) => this.action(ctx, 'rules'));
+    bot.command('cancel', (ctx) => this.action(ctx, 'cancel'));
 
     // Shows the sender's Telegram id: put it in ADMIN_TELEGRAM_IDS to become staff.
     bot.command('myid', (ctx) =>
@@ -149,70 +260,52 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       );
     });
 
-    bot.command(['rules', 'help', 'instructions'], (ctx) => ctx.reply(RULES, { parse_mode: 'HTML', reply_markup: this.playKeyboard() }));
-
-    bot.command('balance', async (ctx) => {
-      const user = await this.userFor(ctx);
-      const b = await this.wallet.balances(user.id);
-      await ctx.reply(
-        `💰 Main wallet: <b>${b.main.birr} birr</b>\n🎁 Play (bonus) wallet: <b>${b.play.birr} birr</b>` +
-          (b.pendingWithdrawal.minor !== '0' ? `\n⏳ Withdrawal being paid: <b>${b.pendingWithdrawal.birr} birr</b>` : ''),
-        { parse_mode: 'HTML' },
-      );
-    });
-
-    bot.command('invite', async (ctx) => {
-      const user = await this.userFor(ctx);
-      const link = `https://t.me/${this.config.bot.username || ctx.me.username}?start=ref_${user.referralCode}`;
-      const reward = money(this.config.money.referralBonusMinor).birr;
-      await ctx.reply(`Invite friends and get <b>${reward} birr</b> bonus when each one makes a first deposit.\n\nYour link:\n${link}`, {
-        parse_mode: 'HTML',
-      });
-    });
-
-    bot.command('withdraw', (ctx) =>
-      ctx.reply('Open the game, go to <b>Wallet</b> and tap <b>Withdraw</b>. Winnings are sent to your Telebirr or CBE Birr.', {
-        parse_mode: 'HTML',
-        reply_markup: this.playKeyboard('💰 Open wallet'),
-      }),
-    );
-
-    bot.command('deposit', async (ctx) => {
-      await this.userFor(ctx);
-      const { methods, depositMin } = this.payments.options();
-      if (!methods.length) return ctx.reply('Deposits are not open yet. Please try again later.');
-      const kb = new InlineKeyboard();
-      methods.forEach((m) => kb.text(m.label, `dep:${m.method}`).row());
-      await ctx.reply(`Choose how you will pay (minimum ${depositMin.birr} birr): / የክፍያ መንገድ ይምረጡ፦`, { reply_markup: kb });
-    });
-
     bot.callbackQuery(/^dep:(TELEBIRR|CBE_BIRR)$/, async (ctx) => {
+      const { user } = await this.userFor(ctx);
+      const t = textsFor(user.language);
       const method = ctx.match[1] as PaymentMethod;
       const acc = this.config.paymentAccounts[method];
       const { depositMin, firstDepositBonusPercent } = this.payments.options();
-      this.awaitingSms.set(ctx.chat!.id, { method, until: Date.now() + SMS_WAIT_MS });
+      this.flows.set(ctx.chat!.id, { kind: 'sms', method, until: Date.now() + FLOW_TTL_MS });
       await ctx.answerCallbackQuery();
-      await ctx.reply(
-        [
-          `📱 <b>${METHOD_LABEL[method]} deposit</b>`,
-          '',
-          `Account: <code>${escape(acc.account)}</code>`,
-          `Name: <b>${escape(acc.name)}</b>`,
-          `Minimum: ${depositMin.birr} birr`,
-          firstDepositBonusPercent ? `🎁 First deposit bonus: ${firstDepositBonusPercent}%` : '',
-          '',
-          '1. Send money to the account above.',
-          '2. You will receive a confirmation SMS.',
-          '3. Copy the <b>whole SMS</b> and paste it here.',
-          '',
-          '1. ገንዘቡን ወደ ላይኛው አካውንት ይላኩ።',
-          '2. የማረጋገጫ መልዕክት (SMS) ይደርስዎታል።',
-          '3. ሙሉውን መልዕክት ኮፒ አድርገው እዚህ ይለጥፉ።',
-        ]
-          .filter((l) => l !== null)
-          .join('\n'),
-        { parse_mode: 'HTML' },
-      );
+      await ctx.reply(t.depositHow(METHOD_LABEL[method], escape(acc.account), escape(acc.name), depositMin.birr, firstDepositBonusPercent), {
+        parse_mode: 'HTML',
+        reply_markup: new Keyboard().text(t.btnCancel).resized().oneTime(),
+      });
+    });
+
+    bot.callbackQuery(/^wm:(TELEBIRR|CBE_BIRR)$/, async (ctx) => {
+      const { user } = await this.userFor(ctx);
+      const f = this.flow(ctx.chat!.id);
+      await ctx.answerCallbackQuery();
+      if (f?.kind !== 'withdraw' || f.step !== 'method') return;
+      const t = textsFor(user.language);
+      f.method = ctx.match[1] as PaymentMethod;
+      f.step = 'account';
+      const mine = user.phone ? localPhone(user.phone) : null;
+      const kb = new Keyboard();
+      if (mine) kb.text(t.useMyNumber(mine)).row();
+      kb.text(t.btnCancel).resized().oneTime();
+      await ctx.reply(t.withdrawAccount, { reply_markup: kb });
+    });
+
+    bot.callbackQuery(/^wc:(yes|no)$/, async (ctx) => {
+      const { user } = await this.userFor(ctx);
+      const t = textsFor(user.language);
+      const f = this.flow(ctx.chat!.id);
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageReplyMarkup().catch(() => undefined);
+      this.flows.delete(ctx.chat!.id);
+      if (ctx.match[1] === 'no' || f?.kind !== 'withdraw' || f.step !== 'confirm') {
+        await ctx.reply(t.cancelled, { reply_markup: this.mainMenu(user.language) });
+        return;
+      }
+      try {
+        await this.payments.requestWithdrawal(user.id, { method: f.method!, accountNumber: f.account!, accountName: f.name!, amountMinor: f.amount! });
+        await ctx.reply(t.withdrawSent(money(f.amount!).birr), { parse_mode: 'HTML', reply_markup: this.mainMenu(user.language) });
+      } catch (e) {
+        await ctx.reply(e instanceof AppError ? `⚠️ ${e.message}` : t.error, { reply_markup: this.mainMenu(user.language) });
+      }
     });
 
     bot.callbackQuery(/^(dok|dno|wok|wno):([0-9a-f-]{36})$/, async (ctx) => {
@@ -245,23 +338,188 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     });
 
     bot.on('message:text', async (ctx) => {
-      const waiting = this.awaitingSms.get(ctx.chat.id);
-      if (!waiting || waiting.until < Date.now()) {
-        this.awaitingSms.delete(ctx.chat.id);
-        return ctx.reply('Use /play to open the game or /deposit to add money.', { reply_markup: this.playKeyboard() });
+      const text = ctx.message.text.trim();
+      const action = menuActionFor(text);
+      if (action) return this.action(ctx, action);
+
+      const { user } = await this.userFor(ctx);
+      const t = textsFor(user.language);
+      const f = this.flow(ctx.chat.id);
+
+      if (f?.kind === 'sms') {
+        try {
+          const d = await this.payments.submitDeposit(user.id, f.method, text);
+          this.flows.delete(ctx.chat.id);
+          await ctx.reply(t.depositReceived(money(d.amountMinor).birr, escape(d.txRef)), { parse_mode: 'HTML', reply_markup: this.mainMenu(user.language) });
+        } catch (e) {
+          await ctx.reply(e instanceof AppError ? `⚠️ ${e.message}` : t.error);
+        }
+        return;
       }
-      const user = await this.userFor(ctx);
-      try {
-        const d = await this.payments.submitDeposit(user.id, waiting.method, ctx.message.text);
-        this.awaitingSms.delete(ctx.chat.id);
-        await ctx.reply(
-          `✅ Received. Deposit of <b>${money(d.amountMinor).birr} birr</b> (ref ${escape(d.txRef)}) is being checked. You will get a message when it is added to your wallet.\n\nደርሶናል፤ እየተረጋገጠ ነው።`,
-          { parse_mode: 'HTML' },
-        );
-      } catch (e) {
-        await ctx.reply(e instanceof AppError ? `⚠️ ${e.message}` : '⚠️ Something went wrong. Please try again.');
-      }
+
+      if (f?.kind === 'withdraw') return this.withdrawStep(ctx, user, f, text);
+
+      await ctx.reply(t.unknown, { reply_markup: user.phone ? this.mainMenu(user.language) : this.phoneKeyboard(user.language) });
     });
+  }
+
+  /** Menu buttons and their matching /commands. */
+  private async action(ctx: Context, action: NonNullable<ReturnType<typeof menuActionFor>>) {
+    const { user } = await this.userFor(ctx);
+    const t = textsFor(user.language);
+    const chatId = ctx.chat!.id;
+    if (action === 'cancel') {
+      this.flows.delete(chatId);
+      await ctx.reply(t.cancelled, { reply_markup: user.phone ? this.mainMenu(user.language) : undefined });
+      return;
+    }
+    if (action === 'language') {
+      await ctx.reply(TEXTS.en.chooseLanguage, { reply_markup: this.languageKeyboard() });
+      return;
+    }
+    if (action === 'rules') {
+      await ctx.reply(t.rules, { parse_mode: 'HTML', reply_markup: this.playButton(user.language) });
+      return;
+    }
+    if (!(await this.requireRegistered(ctx, user))) return;
+    this.flows.delete(chatId);
+
+    if (action === 'play') {
+      await ctx.reply(t.openGame, { reply_markup: this.playButton(user.language) });
+    } else if (action === 'balance') {
+      const b = await this.wallet.balances(user.id);
+      await ctx.reply(t.balance(b.main.birr, b.play.birr, b.pendingWithdrawal.minor !== '0' ? b.pendingWithdrawal.birr : null), { parse_mode: 'HTML' });
+    } else if (action === 'invite') {
+      const link = `https://t.me/${this.config.bot.username || ctx.me.username}?start=ref_${user.referralCode}`;
+      const count = await this.prisma.user.count({ where: { referredById: user.id } });
+      const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(t.shareText)}`;
+      await ctx.reply(t.invite(money(this.config.money.referralBonusMinor).birr, link, count), {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard().url(t.shareButton, share),
+      });
+    } else if (action === 'deposit') {
+      const { methods, depositMin } = this.payments.options();
+      if (!methods.length) return void (await ctx.reply(t.depositsOff));
+      const kb = new InlineKeyboard();
+      methods.forEach((m) => kb.text(m.label, `dep:${m.method}`).row());
+      await ctx.reply(t.depositChoose(depositMin.birr), { parse_mode: 'HTML', reply_markup: kb });
+    } else if (action === 'withdraw') {
+      const b = await this.wallet.balancesMinor(user.id);
+      const min = this.config.money.withdrawMinMinor;
+      if (b.main < min) {
+        await ctx.reply(t.withdrawNotEnough(money(b.main).birr, money(min).birr), { parse_mode: 'HTML' });
+        return;
+      }
+      this.flows.set(chatId, { kind: 'withdraw', step: 'amount', until: Date.now() + FLOW_TTL_MS });
+      await ctx.reply(t.withdrawAmount(money(b.main).birr, money(min).birr), {
+        parse_mode: 'HTML',
+        reply_markup: new Keyboard().text(t.btnCancel).resized().oneTime(),
+      });
+    }
+  }
+
+  private async withdrawStep(ctx: Context, user: User, f: Extract<Flow, { kind: 'withdraw' }>, text: string) {
+    const t = textsFor(user.language);
+    const cancelKb = new Keyboard().text(t.btnCancel).resized().oneTime();
+    f.until = Date.now() + FLOW_TTL_MS;
+
+    if (f.step === 'amount') {
+      const b = await this.wallet.balancesMinor(user.id);
+      const min = this.config.money.withdrawMinMinor;
+      const birr = /^\d{1,7}$/.test(text.replace(/[,\s]/g, '')) ? BigInt(text.replace(/[,\s]/g, '')) * 100n : -1n;
+      if (birr < min || birr > b.main) {
+        await ctx.reply(t.withdrawBadAmount(money(b.main).birr, money(min).birr), { reply_markup: cancelKb });
+        return;
+      }
+      f.amount = birr;
+      f.step = 'method';
+      const kb = new InlineKeyboard();
+      (Object.keys(METHOD_LABEL) as PaymentMethod[]).forEach((m) => kb.text(METHOD_LABEL[m], `wm:${m}`));
+      await ctx.reply(t.withdrawMethod, { reply_markup: kb });
+      return;
+    }
+    if (f.step === 'account') {
+      const mine = user.phone ? localPhone(user.phone) : null;
+      const chosen = mine && text === t.useMyNumber(mine) ? mine : localPhone(text);
+      if (!chosen) {
+        await ctx.reply(t.withdrawBadAccount, { reply_markup: cancelKb });
+        return;
+      }
+      f.account = chosen;
+      f.step = 'name';
+      await ctx.reply(t.withdrawName, { reply_markup: cancelKb });
+      return;
+    }
+    if (f.step === 'name') {
+      const name = text.replace(/\s+/g, ' ').slice(0, 80);
+      if (name.length < 2) {
+        await ctx.reply(t.withdrawName, { reply_markup: cancelKb });
+        return;
+      }
+      f.name = name;
+      f.step = 'confirm';
+      await ctx.reply(t.withdrawConfirm(money(f.amount!).birr, METHOD_LABEL[f.method!], f.account!, escape(name)), {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard().text(t.confirm, 'wc:yes').text(t.btnCancel, 'wc:no'),
+      });
+    }
+  }
+
+  // ─── Broadcasts ───────────────────────────────────────────────────────────
+
+  broadcastStatus(): BroadcastStatus | null {
+    return this.broadcastState;
+  }
+
+  /**
+   * Sends a message (optionally with a picture and a Play button) to every player, or to one id as a test.
+   * Runs in the background at about 20 messages a second; progress is in broadcastStatus().
+   */
+  async broadcast(input: BroadcastInput): Promise<BroadcastStatus> {
+    if (!this.bot) throw new AppError(503, 'BOT_OFF', 'The bot is off. Set BOT_TOKEN and restart the server.');
+    if (this.broadcastState && !this.broadcastState.done && !input.onlyTo) {
+      throw new AppError(409, 'BUSY', 'A message is still being sent. Wait for it to finish.');
+    }
+    const ids = input.onlyTo
+      ? [input.onlyTo]
+      : (await this.prisma.user.findMany({ where: { isBlocked: false }, select: { telegramId: true } })).map((u) => u.telegramId.toString());
+    const status: BroadcastStatus = {
+      id: Date.now(),
+      total: ids.length,
+      sent: 0,
+      failed: 0,
+      done: false,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      test: Boolean(input.onlyTo),
+    };
+    if (!input.onlyTo) this.broadcastState = status;
+    const run = async () => {
+      let photoId: string | undefined;
+      for (const chatId of ids) {
+        try {
+          const playUrl = this.config.bot.miniAppUrl;
+          const reply_markup = input.playButton && playUrl.startsWith('https://') ? new InlineKeyboard().webApp('🎮 Play now / አሁን ይጫወቱ', playUrl) : undefined;
+          if (input.photo) {
+            const msg = await this.bot!.api.sendPhoto(chatId, photoId ?? new InputFile(input.photo, 'promo.jpg'), { caption: input.text, reply_markup });
+            photoId ??= msg.photo.at(-1)?.file_id; // upload once, then reuse Telegram's copy
+          } else {
+            await this.bot!.api.sendMessage(chatId, input.text, { reply_markup });
+          }
+          status.sent++;
+        } catch (e) {
+          status.failed++;
+          this.sendFailed(chatId, e as Error);
+        }
+        await new Promise((r) => setTimeout(r, BROADCAST_GAP_MS));
+      }
+      status.done = true;
+      status.finishedAt = new Date().toISOString();
+      if (!status.test) this.logger.log(`Broadcast finished: ${status.sent} sent, ${status.failed} not delivered.`);
+    };
+    if (input.onlyTo) await run();
+    else void run();
+    return status;
   }
 
   // ─── Notifications ────────────────────────────────────────────────────────
@@ -312,7 +570,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     const u = await this.prisma.user.findUnique({ where: { id: d.userId } });
     const text = [
       `💵 New deposit — ${METHOD_LABEL[d.method]}`,
-      `Player: ${u?.firstName ?? '?'}${u?.username ? ' @' + u.username : ''}`,
+      `Player: ${u?.firstName ?? '?'}${u?.username ? ' @' + u.username : ''}${u?.phone ? ` (${u.phone})` : ''}`,
       `Amount: ${money(d.amountMinor).birr} birr`,
       `Ref: ${d.txRef}`,
       '',
@@ -328,7 +586,7 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
     const u = await this.prisma.user.findUnique({ where: { id: w.userId } });
     const text = [
       `🏧 Withdrawal request — ${METHOD_LABEL[w.method]}`,
-      `Player: ${u?.firstName ?? '?'}${u?.username ? ' @' + u.username : ''}`,
+      `Player: ${u?.firstName ?? '?'}${u?.username ? ' @' + u.username : ''}${u?.phone ? ` (${u.phone})` : ''}`,
       `Amount: ${money(w.amountMinor).birr} birr`,
       `To: ${w.accountNumber} (${w.accountName})`,
       '',
@@ -341,26 +599,22 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
   private async tellPlayerDeposit(d: Deposit) {
     const u = await this.prisma.user.findUnique({ where: { id: d.userId } });
     if (!u) return;
+    const t = textsFor(u.language);
     const text =
       d.status === 'APPROVED'
-        ? `✅ Deposit approved: <b>+${money(d.amountMinor).birr} birr</b>` +
-          (d.bonusMinor > 0n ? `\n🎁 First-deposit bonus: <b>+${money(d.bonusMinor).birr} birr</b> (play wallet)` : '') +
-          '\n\nGood luck! / መልካም ዕድል!'
-        : `❌ Your deposit (ref ${escape(d.txRef)}) was not approved${d.note ? `: ${escape(d.note)}` : ''}. Contact support if you sent the money.`;
-    await this.send(u.telegramId, text, { parse_mode: 'HTML', reply_markup: d.status === 'APPROVED' ? this.playKeyboard() : undefined });
+        ? t.depositApproved(money(d.amountMinor).birr, d.bonusMinor > 0n ? money(d.bonusMinor).birr : null)
+        : t.depositRejected(escape(d.txRef), d.note ? escape(d.note) : null);
+    await this.send(u.telegramId, text, { parse_mode: 'HTML', reply_markup: d.status === 'APPROVED' ? this.playButton(u.language) : undefined });
   }
 
   private async tellPlayerWithdrawal(w: Withdrawal) {
     const u = await this.prisma.user.findUnique({ where: { id: w.userId } });
     if (!u) return;
+    const t = textsFor(u.language);
     const text =
       w.status === 'PAID'
-        ? `✅ ${money(w.amountMinor).birr} birr has been sent to ${escape(w.accountNumber)}.`
-        : `↩️ Your withdrawal of ${money(w.amountMinor).birr} birr was not paid${w.note ? ` (${escape(w.note)})` : ''}. The money is back in your wallet.`;
+        ? t.withdrawPaid(money(w.amountMinor).birr, escape(w.accountNumber))
+        : t.withdrawRejected(money(w.amountMinor).birr, w.note ? escape(w.note) : null);
     await this.send(u.telegramId, text, { parse_mode: 'HTML' });
   }
-}
-
-function escape(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

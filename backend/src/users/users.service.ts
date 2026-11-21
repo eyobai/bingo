@@ -53,23 +53,7 @@ export class UsersService {
           const u = await tx.user.create({
             data: { telegramId, ...names, language, role: role ?? Role.PLAYER, referralCode: newCode(), referredById: referrer?.id },
           });
-          const { play } = await this.ledger.userAccounts(u.id, tx);
-          const welcome = this.config.money.welcomeBonusMinor;
-          if (welcome > 0n) {
-            const promo = await this.ledger.systemAccount(AccountType.PROMOTIONS, tx);
-            await this.ledger.post(
-              {
-                type: TxType.BONUS,
-                description: 'Welcome bonus',
-                idempotencyKey: `welcome:${u.id}`,
-                lines: [
-                  { accountId: promo.id, amountMinor: -welcome },
-                  { accountId: play.id, amountMinor: welcome },
-                ],
-              },
-              tx,
-            );
-          }
+          await this.ledger.userAccounts(u.id, tx);
           return u;
         });
         return { user, created: true };
@@ -80,6 +64,35 @@ export class UsersService {
         if (raced) return { user: raced, created: false };
       }
     }
+  }
+
+  /**
+   * Saves the phone number the player shared from Telegram and, the first time, gives the welcome gift
+   * (WELCOME_BONUS_BIRR, play wallet). Returns the gift amount (0 when none was due).
+   */
+  async registerPhone(userId: string, phoneE164: string): Promise<bigint> {
+    return this.ledger.withTx(async (tx) => {
+      const before = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+      await tx.user.update({ where: { id: userId }, data: { phone: phoneE164 } });
+      const gift = this.config.money.welcomeBonusMinor;
+      if (before.phone || gift <= 0n) return 0n;
+      const { play } = await this.ledger.userAccounts(userId, tx);
+      const promo = await this.ledger.systemAccount(AccountType.PROMOTIONS, tx);
+      const posted = await this.ledger.post(
+        {
+          type: TxType.BONUS,
+          description: 'Welcome gift for registering',
+          idempotencyKey: `welcome:${userId}`,
+          lines: [
+            { accountId: promo.id, amountMinor: -gift },
+            { accountId: play.id, amountMinor: gift },
+          ],
+        },
+        tx,
+      );
+      // An existing idempotency key means the gift was already given (e.g. the number was changed later).
+      return posted.createdAt.getTime() > Date.now() - 60_000 ? gift : 0n;
+    });
   }
 
   setLanguage(userId: string, language: 'am' | 'en') {

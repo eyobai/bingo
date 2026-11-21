@@ -12,3 +12,4 @@ process.env.TELEBIRR_NAME = 'ABEBE KEBEDE';
 process.env.FIRST_DEPOSIT_BONUS_PERCENT = '20';
 process.env.FIRST_DEPOSIT_BONUS_MAX_BIRR = '200';
 process.env.REFERRAL_BONUS_BIRR = '10';
+process.env.WELCOME_BONUS_BIRR = '20';
