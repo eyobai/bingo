@@ -88,26 +88,18 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
       className="relative flex w-full flex-col gap-3 overflow-hidden rounded-2xl border bg-panel p-4 text-left transition-transform active:scale-[0.99]"
       style={{ borderColor: `${color}66`, boxShadow: `0 0 0 1px ${color}22, 0 8px 28px -12px ${color}55` }}
     >
-      <div className="flex items-center gap-3">
-        <span
-          className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-full border-2 border-dashed leading-none"
-          style={{ background: `radial-gradient(circle at 35% 30%, #fff8 0, ${color} 45%, ${color}cc 100%)`, borderColor: '#ffffff66' }}
-          aria-hidden
-        >
-          <span className="font-display text-lg text-white drop-shadow">{fmt(room.stake.birr)}</span>
-          <span className="text-[8px] font-black tracking-widest text-white/85">ETB</span>
-        </span>
-        <span className="min-w-0 flex-1">
+      <div className="flex items-start justify-between gap-3">
+        <span className="min-w-0">
           {/* The card price is what players choose by, so it is the title. */}
           <span className="flex items-baseline gap-1.5">
-            <span className="font-display text-[28px] leading-none tabular-nums text-ink">{fmt(room.stake.birr)}</span>
+            <span className="font-display text-[30px] leading-none tabular-nums" style={{ color }}>
+              {fmt(room.stake.birr)}
+            </span>
             <span className="font-display text-sm text-ink">ETB</span>
             <span className="text-[11px] font-bold text-muted">{t('perCard')}</span>
           </span>
-          <span className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted">
-            <span className="font-bold" style={{ color }}>
-              {room.name}
-            </span>
+          <span className="mt-1.5 flex items-center gap-1.5 truncate text-xs text-muted">
+            <span className="font-bold text-ink">{room.name}</span>
             <span aria-hidden>·</span>
             <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: drawing ? 'var(--color-live)' : color }} />
             {r.players} {drawing ? t('playing') : t('waiting')}
@@ -124,11 +116,9 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
 
       <div className="flex items-end justify-between gap-3">
         <span className="min-w-0">
-          <span className="block text-[10px] font-bold uppercase tracking-widest text-muted">{t('maxWin')}</span>
-          <span className="font-display text-2xl leading-tight tabular-nums" style={{ color }}>
-            {fmt(room.maxWin.birr)}
-          </span>
-          <span className="ml-1 text-sm text-muted">ETB</span>
+          <span className="block text-[10px] font-bold uppercase tracking-widest text-muted">{t('prizeNow')}</span>
+          <span className="font-display text-xl leading-tight tabular-nums text-ink">{fmt(r.prize.birr)}</span>
+          <span className="ml-1 text-xs text-muted">ETB</span>
         </span>
         <span
           className={`shrink-0 rounded-xl px-6 py-3 font-display text-base ${selecting ? 'text-bg' : 'border-2 bg-transparent'}`}
@@ -138,12 +128,11 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
         </span>
       </div>
 
-      <div className="flex items-center justify-between gap-2 text-[11px] font-bold">
-        <span className="text-muted">
-          {t('prizeNow')} <span className="text-ink">{fmt(r.prize.birr)} ETB</span>
+      {note && (
+        <span className="-mb-1 text-right text-[11px] font-bold" style={{ color }}>
+          {note}
         </span>
-        <span style={{ color }}>{note}</span>
-      </div>
+      )}
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-panel-2" aria-hidden>
         <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.round(progress * 100)}%`, background: color }} />
       </div>

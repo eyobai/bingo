@@ -119,14 +119,6 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     return [...this.live.values()].sort((a, b) => a.room.sortOrder - b.room.sortOrder || Number(a.room.stakeMinor - b.room.stakeMinor)).map((l) => l.room.id);
   }
 
-  /** The prize if every card in the room were sold: the most a single winner can get in one round. */
-  maxWinMinor(roomId: string): bigint {
-    const l = this.live.get(roomId);
-    if (!l) return 0n;
-    const { room } = l;
-    return settle({ stakeTotalMinor: BigInt(room.cardPool) * room.stakeMinor, houseCutBps: room.houseCutBps, guaranteedMinor: room.guaranteedPrizeMinor, winners: 1 }).prizeMinor;
-  }
-
   /** Everything a viewer of the room may see. Never includes the server seed of a running round. */
   publicState(roomId: string) {
     const l = this.live.get(roomId);
