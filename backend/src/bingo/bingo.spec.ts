@@ -1,3 +1,4 @@
+import { AUTOMATED_NAMES, automatedName } from './automated-names';
 import { FREE, LINES, completeLines, generateCardSet } from './cards';
 import { ballOrder, hashSeed, newServerSeed } from './fair';
 import { settle } from './prize';
@@ -97,5 +98,17 @@ describe('settle', () => {
       prizePerWinnerMinor: 48_000n,
       houseCutMinor: 12_000n,
     });
+  });
+});
+
+describe('automated player names', () => {
+  it('has at least 10 names and gives players in one round different names', () => {
+    expect(AUTOMATED_NAMES.length).toBeGreaterThanOrEqual(10);
+    const names = Array.from({ length: AUTOMATED_NAMES.length }, (_, i) => automatedName('round-a', i + 1).en);
+    expect(new Set(names).size).toBe(AUTOMATED_NAMES.length);
+    expect(automatedName('round-a', 3)).toEqual(automatedName('round-a', 3)); // stable within a round
+    const other = Array.from({ length: 5 }, (_, i) => automatedName('round-b', i + 1).en);
+    expect(other).not.toEqual(names.slice(0, 5)); // shuffled per round
+    expect(automatedName('round-a', AUTOMATED_NAMES.length + 1).en).toMatch(/ 2$/);
   });
 });

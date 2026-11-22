@@ -11,6 +11,7 @@ import { PrismaService, Tx } from '../prisma.service';
 import { type CardLayout, completeLines, generateCardSet } from './cards';
 import { ballOrder, newServerSeed } from './fair';
 import { settle } from './prize';
+import { automatedName } from './automated-names';
 
 /** Selling stops this long before the countdown hits zero, so a purchase never races the round start. */
 const CLOSE_GRACE_MS = 300;
@@ -60,6 +61,8 @@ interface LiveWinner {
   sampleNo?: number;
   /** A house-funded automated player in a paid room: its prize goes to the house bankroll. */
   automated?: boolean;
+  /** Automated player's name in Amharic script (`name` is in Latin letters). */
+  nameAm?: string;
   lineIndex: number;
   layout: CardLayout;
 }
@@ -707,7 +710,10 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         ...('sampleNo' in w
           ? practice
             ? { name: `Sample player ${w.sampleNo}`, sampleNo: w.sampleNo }
-            : { name: `Automated player ${w.sampleNo}`, sampleNo: w.sampleNo, automated: true }
+            : (() => {
+                const n = automatedName(l.round.id, w.sampleNo);
+                return { name: n.en, nameAm: n.am, sampleNo: w.sampleNo, automated: true };
+              })()
           : { name: (done.names.get(w.userId) ?? 'Player').slice(0, 20) }),
         lineIndex: w.lineIndex,
         layout: this.cardSet[w.cardNo - 1],
