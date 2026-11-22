@@ -314,9 +314,13 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         });
         await tx.card.createMany({ data: rows });
         const total = stake * BigInt(rows.length);
+        const joinPending = !practice && round.housePlanned > 0 && !round.houseCards.length && !round.houseSkipped;
         if (accounts) {
           const fromPlay = rows.reduce((s, r) => s + r.paidPlayMinor, 0n);
+          const bankroll = joinPending ? await this.ledger.systemAccount(AccountType.HOUSE_BANKROLL, tx) : undefined;
           const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
+          // The fallback purchase posts twice; lock both postings' accounts together.
+          if (bankroll) await this.ledger.lockAccounts(tx, [accounts.play.id, accounts.main.id, pot.id, bankroll.id]);
           await this.ledger.post(
             {
               type: TxType.CARD_PURCHASE,
@@ -336,7 +340,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
           data: { cardsSold: { increment: rows.length }, stakeTotalMinor: { increment: total } },
         });
         // Normally automated players join when the countdown starts; if that failed, they join now.
-        if (!practice && afterHuman.housePlanned > 0 && !afterHuman.houseCards.length && !afterHuman.houseSkipped) {
+        if (joinPending) {
           return this.joinAutomated(tx, afterHuman);
         }
         return afterHuman;
@@ -418,8 +422,8 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     });
     const maxEach = Math.max(1, Math.min(room.automatedMaxCards, room.maxCardsPerPlayer));
     const bankroll = await this.ledger.systemAccount(AccountType.HOUSE_BANKROLL, tx);
-    const [{ balance_minor: balance }] = await tx.$queryRaw<{ balance_minor: bigint }[]>`
-      SELECT balance_minor FROM ledger_accounts WHERE id = ${bankroll.id}::uuid FOR UPDATE`;
+    const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
+    const balance = (await this.ledger.lockAccounts(tx, [bankroll.id, pot.id])).get(bankroll.id)!.balance_minor;
     const taken = new Set((await tx.card.findMany({ where: { roundId: round.id }, select: { cardNo: true } })).map((c) => c.cardNo));
     const free = Array.from({ length: room.cardPool }, (_, i) => i + 1).filter((n) => !taken.has(n));
     let affordable = stake > 0n ? Number(balance / stake > 100_000n ? 100_000n : balance / stake) : 0;
@@ -440,7 +444,6 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const skipped = round.housePlanned - joined;
     const houseStake = stake * BigInt(cards.length);
     if (cards.length > 0) {
-      const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
       await this.ledger.post(
         {
           type: TxType.CARD_PURCHASE,

@@ -60,9 +60,9 @@ export class HouseBankrollService {
         const house = await this.ledger.systemAccount(AccountType.HOUSE_BANKROLL, tx);
         const capital = await this.ledger.systemAccount(AccountType.HOUSE_CAPITAL, tx);
         if (direction === 'out') {
-          const [row] = await tx.$queryRaw<{ balance_minor: bigint }[]>`SELECT balance_minor FROM ledger_accounts WHERE id = ${house.id}::uuid FOR UPDATE`;
-          if (row.balance_minor < amountMinor) {
-            throw new AppError(HttpStatus.CONFLICT, 'BANKROLL_TOO_LOW', `The bankroll holds only ${money(row.balance_minor).birr} birr.`);
+          const balance = (await this.ledger.lockAccounts(tx, [house.id, capital.id])).get(house.id)!.balance_minor;
+          if (balance < amountMinor) {
+            throw new AppError(HttpStatus.CONFLICT, 'BANKROLL_TOO_LOW', `The bankroll holds only ${money(balance).birr} birr.`);
           }
         }
         const signed = direction === 'in' ? amountMinor : -amountMinor;
