@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Par
 import { JwtService } from '@nestjs/jwt';
 import { PaymentMethod } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Min } from 'class-validator';
 import { verifyInitData } from './auth/telegram-init-data';
 import { GameService, MIN_PLAYERS, PRACTICE_ROOM_ID } from './bingo/game.service';
 import { lineName } from './bingo/cards';
@@ -30,6 +30,7 @@ class LanguageDto {
 }
 class BuyCardsDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(10) @IsInt({ each: true }) cardNos!: number[];
+  @IsOptional() @IsBoolean() acceptHousePlayers?: boolean;
 }
 class DepositDto {
   @IsIn(Object.values(PaymentMethod)) method!: PaymentMethod;
@@ -192,7 +193,7 @@ export class GameController {
             prize: round.prize,
             selectEndsAt: round.selectEndsAt,
             calls: round.calls.length,
-            needPlayers: Math.max(0, (room.practice ? 1 : MIN_PLAYERS) - round.players),
+            needPlayers: Math.max(0, (room.practice || room.houseCash ? 1 : MIN_PLAYERS) - round.players),
             nextRoundAt: s.result?.nextRoundAt ?? s.cancelled?.nextRoundAt ?? null,
           },
         },
@@ -224,7 +225,7 @@ export class GameController {
   @Post('rooms/:roomId/cards')
   @HttpCode(HttpStatus.OK)
   async buy(@CurrentUser() auth: AuthUser, @Param('roomId') roomId: string, @Body() body: BuyCardsDto) {
-    return { cards: await this.game.buyCards(auth.id, roomId, body.cardNos) };
+    return { cards: await this.game.buyCards(auth.id, roomId, body.cardNos, body.acceptHousePlayers === true) };
   }
 
   @Delete('rooms/:roomId/cards/:cardNo')
@@ -245,6 +246,7 @@ export class GameController {
       seedHash: r.seedHash,
       serverSeed: over ? r.serverSeed : null,
       calls: r.calls,
+      ...(r.houseCards.length ? { houseCards: r.houseCards, ...(over ? { houseWinningCards: r.houseWinningCards } : {}) } : {}),
       howToCheck:
         'sha256(serverSeed) must equal seedHash. The ball order is a Fisher-Yates shuffle of 1..75 where each step ' +
         'uses HMAC-SHA256(serverSeed, "<roundNumber>:<counter>"), first 4 bytes, with rejection sampling.',

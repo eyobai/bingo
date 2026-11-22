@@ -36,6 +36,8 @@ export interface LobbyRoom {
   id: string;
   name: string;
   practice: boolean;
+  houseCash: boolean;
+  entriesPaused: boolean;
   samplePlayers: number;
   stake: Money;
   cardPool: number;
@@ -64,6 +66,9 @@ export interface RoomState {
     id: string;
     name: string;
     practice: boolean;
+    houseCash: boolean;
+    entriesPaused: boolean;
+    houseCards: number[];
     samplePlayers: number;
     stake: Money;
     cardPool: number;

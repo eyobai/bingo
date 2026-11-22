@@ -9,9 +9,10 @@ import { IsDateString } from 'class-validator';
 import { AccountType, DepositStatus, Prisma, TxType, WithdrawalStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Max, Min } from 'class-validator';
-import { GameService, MAX_CARD_POOL, PRACTICE_ROOM_ID } from './bingo/game.service';
+import { GameService, HOUSE_CASH_ROOM_ID, MAX_CARD_POOL, PRACTICE_ROOM_ID, isManagedRoom } from './bingo/game.service';
 import { AdminOnly, AppError, CurrentUser, Public, money, type AuthUser } from './common/common';
 import { LedgerService } from './ledger/ledger.service';
+import { HouseBankrollService } from './ledger/house-bankroll.service';
 import { PaymentsService, depositView, withdrawalView } from './payments/payments.service';
 import { PrismaService } from './prisma.service';
 
@@ -70,6 +71,10 @@ class RoomUpdateDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) minCards?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
+class HouseFundingDto {
+  @Matches(/^[1-9]\d{0,6}$/) amountBirr!: string;
+  @Matches(/^[A-Za-z0-9][A-Za-z0-9._/-]{2,79}$/) bankReference!: string;
+}
 
 /** Staff API. Every route needs an ADMIN account. Changes to a room apply from its next round. */
 @AdminOnly()
@@ -82,6 +87,7 @@ export class AdminController {
     private readonly game: GameService,
     private readonly wallet: WalletService,
     private readonly bot: BotService,
+    private readonly houseBankroll: HouseBankrollService,
   ) {}
 
   @Get('summary')
@@ -92,7 +98,7 @@ export class AdminController {
       this.prisma.round.aggregate({
         where: { status: 'FINISHED', finishedAt: { gte: since }, roomId: { not: PRACTICE_ROOM_ID } },
         _count: true,
-        _sum: { stakeTotalMinor: true, prizeMinor: true, houseCutMinor: true, topUpMinor: true, cardsSold: true },
+        _sum: { stakeTotalMinor: true, prizeMinor: true, houseCutMinor: true, topUpMinor: true, cardsSold: true, houseStakeMinor: true, housePrizeMinor: true },
       }),
       this.prisma.user.count(),
       this.prisma.user.count({ where: { createdAt: { gte: since } } }),
@@ -112,6 +118,8 @@ export class AdminController {
       cardsSold: s.cardsSold ?? 0,
       stakes: money(s.stakeTotalMinor ?? 0n),
       prizesPaid: money(s.prizeMinor ?? 0n),
+      housePlayerStakes: money(s.houseStakeMinor ?? 0n),
+      housePlayerPrizes: money(s.housePrizeMinor ?? 0n),
       houseRevenue: money(s.houseCutMinor ?? 0n),
       guaranteeTopUps: money(s.topUpMinor ?? 0n),
       depositsApproved: money(deposits._sum.amountMinor ?? 0n),
@@ -169,14 +177,27 @@ export class AdminController {
 
   @Get('rooms')
   rooms() {
-    return this.prisma.room.findMany({ where: { id: { not: PRACTICE_ROOM_ID } }, orderBy: { sortOrder: 'asc' } }).then((rows) =>
+    return this.prisma.room.findMany({ where: { id: { notIn: [PRACTICE_ROOM_ID, HOUSE_CASH_ROOM_ID] } }, orderBy: { sortOrder: 'asc' } }).then((rows) =>
       rows.map((r) => ({ ...r, stakeMinor: money(r.stakeMinor), guaranteedPrizeMinor: money(r.guaranteedPrizeMinor) })),
     );
   }
 
+  @Get('house-bankroll')
+  bankroll() {
+    return this.houseBankroll.view();
+  }
+
+  @Post('house-bankroll/funding')
+  @HttpCode(HttpStatus.OK)
+  async fundHouseBankroll(@CurrentUser() staff: AuthUser, @Body() body: HouseFundingDto) {
+    const result = await this.houseBankroll.recordFunding(staff.id, BigInt(body.amountBirr) * 100n, body.bankReference);
+    await this.game.refreshHouseCashAvailability();
+    return result;
+  }
+
   @Patch('rooms/:id')
   async updateRoom(@Param('id') id: string, @Body() body: RoomUpdateDto) {
-    if (id === PRACTICE_ROOM_ID) throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'This room is not configurable here.');
+    if (isManagedRoom(id)) throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'This room is not configurable here.');
     const { guaranteedPrizeBirr, stakeBirr, ...rest } = body;
     const r = await this.prisma.room.update({
       where: { id },
@@ -200,6 +221,9 @@ export class AdminController {
       cardsSold: r.cardsSold,
       stakes: money(r.stakeTotalMinor),
       prize: money(r.prizeMinor),
+      houseStake: money(r.houseStakeMinor),
+      housePrize: money(r.housePrizeMinor),
+      houseWinningCards: r.houseWinningCards,
       houseCut: money(r.houseCutMinor),
       topUp: money(r.topUpMinor),
       calls: r.calls.length,

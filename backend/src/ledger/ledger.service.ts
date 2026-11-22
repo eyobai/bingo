@@ -19,7 +19,7 @@ export interface PostingInput {
 }
 
 /** System accounts that may go below zero: they record money that came from or left to the outside. */
-const ALLOW_NEGATIVE: AccountType[] = [AccountType.PAYMENT_CLEARING, AccountType.PROMOTIONS, AccountType.ADJUSTMENTS];
+const ALLOW_NEGATIVE: AccountType[] = [AccountType.PAYMENT_CLEARING, AccountType.PROMOTIONS, AccountType.ADJUSTMENTS, AccountType.HOUSE_CAPITAL];
 const USER_TYPES: AccountType[] = [AccountType.USER_MAIN, AccountType.USER_PLAY, AccountType.USER_WITHDRAW_HOLD];
 
 export interface UserAccounts {
@@ -85,6 +85,9 @@ export class LedgerService {
         if (acc.type === AccountType.USER_MAIN || acc.type === AccountType.USER_PLAY) {
           throw new AppError(HttpStatus.UNPROCESSABLE_ENTITY, 'INSUFFICIENT_FUNDS', 'Not enough money in your wallet.');
         }
+        if (acc.type === AccountType.HOUSE_BANKROLL) {
+          throw new AppError(HttpStatus.CONFLICT, 'HOUSE_ROOM_PAUSED', 'This room is paused until the house players can cover their stakes.');
+        }
         throw new Error(`Posting would make ${acc.code} negative`);
       }
       acc.balance_minor = after;
@@ -115,21 +118,21 @@ export class LedgerService {
     return { main: get(AccountType.USER_MAIN), play: get(AccountType.USER_PLAY), hold: get(AccountType.USER_WITHDRAW_HOLD) };
   }
 
-  /** System account ids never change, so they are looked up once. Callers use only `id` and `type`. */
-  private readonly systemCache = new Map<AccountType, LedgerAccount>();
-
   async systemAccount(type: AccountType, tx: Tx): Promise<LedgerAccount> {
     if (USER_TYPES.includes(type)) throw new Error(`${type} is a player account`);
-    const cached = this.systemCache.get(type);
-    if (cached) return cached;
     const code = `SYSTEM:${type}`;
+    const existing = await tx.ledgerAccount.findUnique({ where: { code } });
+    if (existing) return existing;
     await tx.ledgerAccount.createMany({
       data: [{ code, type, allowNegative: ALLOW_NEGATIVE.includes(type) }],
       skipDuplicates: true,
     });
-    const account = await tx.ledgerAccount.findUniqueOrThrow({ where: { code } });
-    this.systemCache.set(type, account);
-    return account;
+    return tx.ledgerAccount.findUniqueOrThrow({ where: { code } });
+  }
+
+  async systemBalance(type: AccountType): Promise<bigint> {
+    const account = await this.prisma.ledgerAccount.findUnique({ where: { code: `SYSTEM:${type}` }, select: { balanceMinor: true } });
+    return account?.balanceMinor ?? 0n;
   }
 
   /** Every account's balance summed: always 0 when the books are right. */

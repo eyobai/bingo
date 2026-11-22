@@ -13,6 +13,7 @@ export function useRoom(roomId: string, onWallet: (b: Balances) => void) {
   const [mine, setMine] = useState<number[]>([]);
   const [layouts, setLayouts] = useState<number[][]>([]);
   const [connected, setConnected] = useState(false);
+  const [closed, setClosed] = useState(false);
   /** server clock minus local clock, so countdowns are right even when the phone's clock is wrong. */
   const offset = useRef(0);
   const roundRef = useRef<string | null>(null);
@@ -37,11 +38,21 @@ export function useRoom(roomId: string, onWallet: (b: Balances) => void) {
     });
     socket.on('connect', () => {
       setConnected(true);
-      socket.emit('join', { roomId });
+      socket.emit('join', { roomId }, (response?: { ok: boolean }) => {
+        if (response?.ok === false) {
+          setClosed(true);
+          setState(null);
+        }
+      });
     });
     socket.on('disconnect', () => setConnected(false));
     socket.on('state', (s: RoomState | null) => {
-      if (!s) return;
+      if (!s) {
+        setClosed(true);
+        setState(null);
+        return;
+      }
+      setClosed(false);
       offset.current = new Date(s.serverTime).getTime() - Date.now();
       if (s.round.id !== roundRef.current) {
         roundRef.current = s.round.id;
@@ -93,7 +104,7 @@ export function useRoom(roomId: string, onWallet: (b: Balances) => void) {
 
   /** Takes the card, or gives it back if it is already yours. Throws ApiError for the caller to show. */
   const toggle = useCallback(
-    async (cardNo: number) => {
+    async (cardNo: number, acceptHousePlayers = false) => {
       if (pending.has(cardNo)) return;
       const giveBack = shown.includes(cardNo);
       setPendingFor(cardNo, giveBack ? 'remove' : 'add');
@@ -101,7 +112,7 @@ export function useRoom(roomId: string, onWallet: (b: Balances) => void) {
       try {
         const r = giveBack
           ? await api<{ cards: number[] }>(`/rooms/${roomId}/cards/${cardNo}`, { method: 'DELETE' })
-          : await api<{ cards: number[] }>(`/rooms/${roomId}/cards`, { body: { cardNos: [cardNo] } });
+          : await api<{ cards: number[] }>(`/rooms/${roomId}/cards`, { body: { cardNos: [cardNo], ...(acceptHousePlayers ? { acceptHousePlayers } : {}) } });
         // With several taps in flight the answers can arrive out of order, so an answer is only trusted
         // when it is the last one; otherwise the list is fetched again once all of them are back.
         if (inFlight.current === 1) setMine(r.cards);
@@ -123,7 +134,7 @@ export function useRoom(roomId: string, onWallet: (b: Balances) => void) {
 
   const busy = useMemo(() => new Set(pending.keys()), [pending]);
   const now = () => Date.now() + offset.current;
-  return { state, mine: shown, layouts, connected, busy, toggle, now };
+  return { state, mine: shown, layouts, connected, closed, busy, toggle, now };
 }
 
 /** Re-renders every `ms` so countdowns tick. */

@@ -68,6 +68,10 @@ enum AccountType {
   ADJUSTMENTS
   /// No longer used (an earlier test feature). Kept so databases that already have it still load.
   ROLLOVER
+  /// Operator cash reserved for buying the disclosed house players' cards.
+  HOUSE_BANKROLL
+  /// Offset for externally verified operator cash contributions.
+  HOUSE_CAPITAL
 }
 
 model LedgerAccount {
@@ -97,6 +101,7 @@ enum TxType {
   WITHDRAWAL_RELEASE
   WITHDRAWAL_PAYOUT
   ADJUSTMENT
+  HOUSE_FUNDING
 }
 
 model LedgerTransaction {
@@ -252,6 +257,10 @@ model Round {
   houseCutMinor    BigInt      @default(0) @map("house_cut_minor")
   topUpMinor       BigInt      @default(0) @map("top_up_minor")
   prizePerWinnerMinor BigInt   @default(0) @map("prize_per_winner_minor")
+  houseStakeMinor     BigInt   @default(0) @map("house_stake_minor")
+  housePrizeMinor     BigInt   @default(0) @map("house_prize_minor")
+  houseCards          Int[]    @default([]) @map("house_cards")
+  houseWinningCards   Int[]    @default([]) @map("house_winning_cards")
   createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   room    Room     @relation(fields: [roomId], references: [id])
