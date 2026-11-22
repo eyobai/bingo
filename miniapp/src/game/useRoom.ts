@@ -38,6 +38,7 @@ export function useRoom(roomId: string, onWallet: (b: Balances) => void) {
     });
     socket.on('connect', () => {
       setConnected(true);
+      void refreshMine(); // after a reconnect, make sure the cards shown are the server's
       socket.emit('join', { roomId }, (response?: { ok: boolean }) => {
         if (response?.ok === false) {
           setClosed(true);

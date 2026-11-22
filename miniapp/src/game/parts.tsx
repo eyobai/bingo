@@ -63,7 +63,8 @@ export function GoldBall({ n, style }: { n: number; style?: CSSProperties }) {
 }
 
 /** The one number a card still needs to complete a line, or null when it needs more than one. */
-export function oneAway(layout: number[], marked: Set<number>): number | null {
+export function oneAway(layout: number[] | undefined, marked: Set<number>): number | null {
+  if (!layout) return null;
   for (const line of LINES) {
     const missing = line.map((i) => layout[i]).filter((n) => n !== 0 && !marked.has(n));
     if (missing.length === 1) return missing[0];

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, api, session, type Balances, type User } from './api';
 import { GameScreen } from './game/GameScreen';
 import { Lobby } from './game/Lobby';
+import { ConnectionBanner } from './Connection';
 import { Header } from './Header';
 import { I18nProvider, useI18n, type Lang } from './i18n';
 import { ProfileView } from './ProfileView';
@@ -92,6 +93,8 @@ function Shell({ user }: { user: User }) {
   return (
     <div className="mx-auto flex min-h-full max-w-[520px] flex-col">
       <Header user={user} wallet={wallet} />
+      {/* Tells the player when the phone loses its connection, and refreshes the wallet when it is back. */}
+      <ConnectionBanner onBack={() => void api<{ wallet: Balances }>('/me').then((r) => setWallet(r.wallet)).catch(() => undefined)} />
       <main className="flex-1 pb-20">
         {/* The game stays mounted so the live connection survives tab switches. */}
         <div hidden={tab !== 'game'}>
