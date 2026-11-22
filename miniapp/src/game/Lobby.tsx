@@ -142,11 +142,7 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
           </span>
         )}
         <span className="mt-0.5 block truncate text-[11px] text-muted">
-          👤 {room.practice ? t('realPlayers', { n: r.players }) : `${r.players + r.automated} ${drawing ? t('playing') : t('waiting')}`}
-          {/* Automated players are counted as players and always labelled. */}
-          {!room.practice && (r.automated > 0 || room.automatedPlayers > 0) && (
-            <span className="ml-1 font-bold text-ink">({t('automatedCount', { n: r.automated })})</span>
-          )}
+          {room.practice ? `👤 ${t('realPlayers', { n: r.players })}` : `${r.players + r.automated} ${drawing ? t('playing') : t('waiting')}`}
         </span>
         <span className={`mt-0.5 block truncate text-[11px] font-bold ${drawing ? 'text-live' : ''}`} style={drawing ? undefined : { color }}>
           {status}
