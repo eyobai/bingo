@@ -114,7 +114,6 @@ export class AdminController {
       prizesPaid: money(s.prizeMinor ?? 0n),
       housePlayerStakes: money(s.houseStakeMinor ?? 0n),
       housePlayerPrizes: money(s.housePrizeMinor ?? 0n),
-      retiredHouseBalance: money(await this.ledger.systemBalance(AccountType.HOUSE_BANKROLL)),
       houseRevenue: money(s.houseCutMinor ?? 0n),
       guaranteeTopUps: money(s.topUpMinor ?? 0n),
       depositsApproved: money(deposits._sum.amountMinor ?? 0n),
@@ -129,6 +128,20 @@ export class AdminController {
       /** Must be 0. Anything else means the books are broken: stop and investigate. */
       ledgerCheck: money(await this.ledger.trialBalance()),
     };
+  }
+
+  @Get('house-bankroll')
+  async retiredHouseBankroll() {
+    const [balance, recent] = await Promise.all([
+      this.ledger.systemBalance(AccountType.HOUSE_BANKROLL),
+      this.prisma.ledgerTransaction.findMany({
+        where: { type: TxType.HOUSE_FUNDING },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: { id: true, description: true, createdAt: true, metadata: true },
+      }),
+    ]);
+    return { balance: money(balance), recent };
   }
 
   @Get('deposits')

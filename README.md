@@ -193,8 +193,8 @@ financial reports. Set the flag back to `false` and restart to hide the room.
 
 House Cash has been retired. The old `HOUSE_CASH_ROOM_ENABLED` setting no longer has any effect.
 Any already funded round settles or refunds on upgrade, without taking new entries or funding.
-Historical records and ledger balances are kept; any remaining operator balance is shown in
-**Admin → Overview** and is not automatically transferred.
+Historical records and ledger balances are kept. **Admin → Overview** shows the remaining
+operator balance and recent funding records for reconciliation. No funds are transferred automatically.
 
 - Rooms are rows in the `rooms` table (stake, card pool, countdown, ball speed, house share, minimum cards,
   guaranteed prize). Staff change them with `PATCH /api/admin/rooms/:id`; changes apply from the next round.
