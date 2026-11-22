@@ -197,7 +197,8 @@ players competing for real cash. In **Admin → Settings**:
 1. **House bankroll:** record each real bank transfer of operator cash with its bank reference
    (**Record funding**; **Record withdrawal** when you take money out). Recording updates the books; it does
    not move money. A reference can be used once. Keep this money separate from player funds.
-2. **Room settings → House-funded automated players:** tick the box, set how many join each round and
+2. **Room settings → House-funded automated players:** tick the box, set the range of how many join each
+   round (from–to; each round picks a random number in it; from = to for a fixed number) and
    the most cards each may take (each picks 1 up to that at random; never more than a real player may hold).
    Applies from the room's next round.
 

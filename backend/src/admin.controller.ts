@@ -73,6 +73,8 @@ class RoomUpdateDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
   /** House-funded automated players (licensed operators only). */
   @IsOptional() @IsBoolean() automatedEnabled?: boolean;
+  /** Automated players per round: a random number from automatedMinPlayers to automatedPlayers. */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(500) automatedMinPlayers?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(500) automatedPlayers?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10) automatedMaxCards?: number;
 }
@@ -229,6 +231,11 @@ export class AdminController {
       if (!before) throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'No such room.');
       const automatedOn = data.automatedEnabled ?? before.automatedEnabled;
       const automatedCount = data.automatedPlayers ?? before.automatedPlayers;
+      const automatedMin = data.automatedMinPlayers ?? Math.min(before.automatedMinPlayers, automatedCount);
+      data.automatedMinPlayers = automatedMin;
+      if (automatedMin > automatedCount) {
+        throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_RANGE', 'The lowest number of automated players cannot be above the highest.');
+      }
       const pool = data.cardPool ?? before.cardPool;
       if (automatedOn && automatedCount < 1) {
         throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_COUNT', 'Set how many automated players join each round (1 or more).');
@@ -249,7 +256,7 @@ export class AdminController {
       // Every room change is recorded with who made it and what it was before and after.
       // Only fields that were sent; the automated-player fields are always included so their history is clear.
       const changed = [
-        ...new Set([...Object.keys(data).filter((k) => (data as Record<string, unknown>)[k] !== undefined), 'automatedEnabled', 'automatedPlayers', 'automatedMaxCards']),
+        ...new Set([...Object.keys(data).filter((k) => (data as Record<string, unknown>)[k] !== undefined), 'automatedEnabled', 'automatedMinPlayers', 'automatedPlayers', 'automatedMaxCards']),
       ];
       const pick = (row: object) => Object.fromEntries(changed.map((k) => [k, (row as Record<string, unknown>)[k]]));
       await this.audit.record(
@@ -258,6 +265,7 @@ export class AdminController {
           action:
             before.automatedEnabled !== updated.automatedEnabled ||
             before.automatedPlayers !== updated.automatedPlayers ||
+            before.automatedMinPlayers !== updated.automatedMinPlayers ||
             before.automatedMaxCards !== updated.automatedMaxCards
               ? 'ROOM_AUTOMATED_PLAYERS'
               : 'ROOM_UPDATE',

@@ -524,7 +524,11 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         stakeMinor: fresh.stakeMinor,
         houseCutBps: fresh.houseCutBps,
         guaranteedMinor: fresh.guaranteedPrizeMinor,
-        housePlanned: fresh.automatedEnabled && fresh.stakeMinor > 0n && !isManagedRoom(fresh.id) ? fresh.automatedPlayers : 0,
+        // A random number of automated players from the room's range, picked fresh for every round.
+        housePlanned:
+          fresh.automatedEnabled && fresh.stakeMinor > 0n && !isManagedRoom(fresh.id)
+            ? randomInt(Math.min(fresh.automatedMinPlayers, fresh.automatedPlayers), fresh.automatedPlayers + 1)
+            : 0,
         serverSeed,
         seedHash,
         selectEndsAt: new Date(Date.now() + fresh.selectSeconds * 1000),

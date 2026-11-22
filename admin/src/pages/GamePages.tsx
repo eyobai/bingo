@@ -100,6 +100,7 @@ interface Room {
   guaranteedPrizeMinor: Money;
   isActive: boolean;
   automatedEnabled: boolean;
+  automatedMinPlayers: number;
   automatedPlayers: number;
   automatedMaxCards: number;
 }
@@ -252,6 +253,7 @@ function RoomForm({ room, onSaved }: { room: Room; onSaved: () => void }) {
     guaranteedPrizeBirr: Number(room.guaranteedPrizeMinor.birr),
     isActive: room.isActive,
     automatedEnabled: room.automatedEnabled,
+    automatedMinPlayers: room.automatedMinPlayers,
     automatedPlayers: room.automatedPlayers,
     automatedMaxCards: room.automatedMaxCards,
   });
@@ -281,6 +283,7 @@ function RoomForm({ room, onSaved }: { room: Room; onSaved: () => void }) {
           guaranteedPrizeBirr: f.guaranteedPrizeBirr,
           isActive: f.isActive,
           automatedEnabled: f.automatedEnabled,
+          automatedMinPlayers: f.automatedMinPlayers,
           automatedPlayers: f.automatedPlayers,
           automatedMaxCards: f.automatedMaxCards,
         },
@@ -355,8 +358,15 @@ function RoomForm({ room, onSaved }: { room: Room; onSaved: () => void }) {
             Automated players join each round (only where your licence allows it)
           </label>
           {f.automatedEnabled && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {num('automatedPlayers', 'Automated players per round', 'They join when each countdown starts.', 1, Math.min(500, f.cardPool - 1))}
+            <div className="grid gap-4 sm:grid-cols-3">
+              {num('automatedMinPlayers', 'Automated players per round: from', 'Each round picks a random number in this range.', 0, f.automatedPlayers)}
+              {num(
+                'automatedPlayers',
+                'Automated players per round: to',
+                `${f.automatedMinPlayers === f.automatedPlayers ? `Always ${f.automatedPlayers}` : `${f.automatedMinPlayers} to ${f.automatedPlayers}`} per round. They join when each countdown starts.`,
+                1,
+                Math.min(500, f.cardPool - 1),
+              )}
               {num(
                 'automatedMaxCards',
                 'Most cards per automated player',

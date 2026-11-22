@@ -85,8 +85,12 @@ describe('automated players (integration)', () => {
     await db.$disconnect();
   });
 
-  const enable = (room: string, n: number, maxCards = 1) =>
-    http.patch(`/api/admin/rooms/${room}`).set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: n, automatedMaxCards: maxCards }).expect(200);
+  const enable = (room: string, n: number, maxCards = 1, min = n) =>
+    http
+      .patch(`/api/admin/rooms/${room}`)
+      .set(auth(staff))
+      .send({ automatedEnabled: true, automatedMinPlayers: min, automatedPlayers: n, automatedMaxCards: maxCards })
+      .expect(200);
   const disable = (room: string) => http.patch(`/api/admin/rooms/${room}`).set(auth(staff)).send({ automatedEnabled: false }).expect(200);
   /** The first countdown that uses the room's automated-player setting, with time left to act in. */
   const automatedRound = (room: string, n: number, msLeft: number) =>
@@ -209,6 +213,25 @@ describe('automated players (integration)', () => {
     expect(await app.get(LedgerService).trialBalance()).toBe(0n);
   });
 
+  it('picks a random number of automated players from the range for every round', async () => {
+    await enable('solo', 4, 1, 2); // 2 to 4 automated players per round
+    const seen = new Set<number>();
+    let last = -1;
+    while (seen.size < 2) {
+      const s = await until('solo', (x) => x.round.number !== last && x.round.status === 'SELECTING' && x.room.automatedPlayers > 0, 30_000);
+      last = s.round.number;
+      const r = await db.round.findFirstOrThrow({ where: { roomId: 'solo', number: s.round.number } });
+      expect(r.housePlanned).toBeGreaterThanOrEqual(2);
+      expect(r.housePlanned).toBeLessThanOrEqual(4);
+      seen.add(r.housePlanned);
+    }
+    await disable('solo');
+    // Let the room settle (a round without automated players) so later bankroll checks are not disturbed.
+    await until('solo', (x) => x.room.automatedPlayers === 0, 60_000);
+    const audit = (await http.get('/api/admin/audit').set(auth(staff)).expect(200)).body;
+    expect(audit.find((e: any) => e.targetId === 'solo' && e.after.automatedEnabled === true).after).toMatchObject({ automatedMinPlayers: 2, automatedPlayers: 4 });
+  }, 120_000);
+
   it('refunds every stake to its source when the round is cancelled', async () => {
     const p = await player(40);
     await enable('refund', 3);
@@ -227,6 +250,8 @@ describe('automated players (integration)', () => {
   it('lets staff control it per room and records every change and bankroll movement', async () => {
     await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true }).expect(400); // needs a count
     await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: 400 }).expect(400);
+    // A range: the lowest cannot be above the highest.
+    await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true, automatedMinPlayers: 9, automatedPlayers: 5 }).expect(400);
     // Never more cards than a real player may hold (4 here), and always cards left for real players.
     await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: 5, automatedMaxCards: 5 }).expect(400);
     await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: 100, automatedMaxCards: 4 }).expect(400);

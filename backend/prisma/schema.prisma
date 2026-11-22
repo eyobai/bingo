@@ -224,7 +224,8 @@ model Room {
   sortOrder            Int      @default(0) @map("sort_order")
   /// House-funded automated players join paid rounds (licensed operators only). Off by default.
   automatedEnabled     Boolean  @default(false) @map("automated_enabled")
-  /// How many automated players join each round (one card each) when enabled.
+  /// Automated players per round: a random number from automatedMinPlayers to automatedPlayers each round.
+  automatedMinPlayers  Int      @default(0) @map("automated_min_players")
   automatedPlayers     Int      @default(0) @map("automated_players")
   /// Each automated player takes a random number of cards from 1 up to this (never above maxCardsPerPlayer).
   automatedMaxCards    Int      @default(1) @map("automated_max_cards")
