@@ -528,9 +528,12 @@ function ResultView({ state, mine, now }: RoomHook) {
   //   // Automated players have names but are always labelled as automated.
   //   w.automated ? t('automatedPlayer', { name: w.name }) : w.sampleNo ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo }) : w.name;
   const winnerName = (w: Winner) =>
-    w.sampleNo
-      ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo })
-      : w.name;
+    // Automated winners use the name from the list (sent by the server), with the 🤖 automated label.
+    w.automated
+      ? t('automatedPlayer', { name: w.name })
+      : w.sampleNo
+        ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo })
+        : w.name;
   return (
     <div className="winner-glow flex min-h-[70vh] flex-col items-center gap-4 px-4 py-6">
       {myWins.length > 0 && (
