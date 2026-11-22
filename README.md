@@ -208,7 +208,8 @@ How it works:
   ("7 waiting (7 🤖)" in the lobby, "12 players (7 🤖)" in the room), and the room shows a notice.
   Before a player's first card the Mini App asks them to confirm; the server refuses a purchase without that
   confirmation (`AUTOMATED_TERMS_REQUIRED`) and records it on the purchase.
-- **Same stake, same pool, same chance.** When each countdown starts, each announced automated player buys 1 up to
+- **Same stake, same pool, same chance.** During the countdown, announced automated players arrive slowly and at random moments
+  (a few at a time, all in by ~90% of the countdown); each buys 1 up to
   the room's maximum random free cards at the room's normal price, paid from the house bankroll. Every paid card is in the
   one prize pool and is checked against the same balls. Example: 50 automated + 10 real players at 10 ETB = a
   600 ETB pool; with a 20% house cut a sole real winner gets 480 ETB.

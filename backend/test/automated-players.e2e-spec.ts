@@ -61,10 +61,10 @@ describe('automated players (integration)', () => {
     await db.room.createMany({
       data: [
         { id: 'plain', name: 'Plain', ...room, selectSeconds: 60, sortOrder: 0 },
-        { id: 'short', name: 'Short', ...room, selectSeconds: 6, sortOrder: 1 },
-        { id: 'full', name: 'Full', ...room, selectSeconds: 12, sortOrder: 2 },
+        { id: 'short', name: 'Short', ...room, selectSeconds: 30, sortOrder: 1 },
+        { id: 'full', name: 'Full', ...room, selectSeconds: 40, sortOrder: 2 },
         { id: 'solo', name: 'Solo', ...room, selectSeconds: 4, sortOrder: 3 },
-        { id: 'refund', name: 'Refund', ...room, selectSeconds: 5, minCards: 10, sortOrder: 4 },
+        { id: 'refund', name: 'Refund', ...room, selectSeconds: 30, minCards: 10, sortOrder: 4 },
         { id: 'unfunded', name: 'Unfunded', ...room, selectSeconds: 2, sortOrder: 5 },
       ],
     });
@@ -93,8 +93,26 @@ describe('automated players (integration)', () => {
       .expect(200);
   const disable = (room: string) => http.patch(`/api/admin/rooms/${room}`).set(auth(staff)).send({ automatedEnabled: false }).expect(200);
   /** The first countdown that uses the room's automated-player setting, with time left to act in. */
-  const automatedRound = (room: string, n: number, msLeft: number) =>
-    until(room, (s) => s.room.automatedPlayers === n && s.round.status === 'SELECTING' && Date.parse(s.round.selectEndsAt) - Date.now() > msLeft);
+  /**
+   * The first countdown that uses the room's automated-player setting, once every announced automated player has
+   * arrived (they join gradually during the countdown), with time left to act in.
+   */
+  const automatedRound = async (room: string, n: number, msLeft: number) => {
+    const open = await until(room, (s) => s.room.automatedPlayers === n && s.round.status === 'SELECTING');
+    // Only this round uses automated players (a change applies from the next round), whatever happens below.
+    await disable(room);
+    for (const deadline = Date.now() + 60_000; Date.now() < deadline; await sleep(100)) {
+      const r = await db.round.findFirstOrThrow({ where: { roomId: room, number: open.round.number } });
+      if (r.status !== 'SELECTING') throw new Error(`Room ${room}: round ended before automated players finished joining`);
+      if (new Set(r.houseOwners).size + r.houseSkipped >= r.housePlanned) {
+        const s = await state(room);
+        if (s.round.number !== open.round.number) throw new Error(`Room ${room}: the round moved on`);
+        if (Date.parse(s.round.selectEndsAt) - Date.now() < msLeft) throw new Error(`Room ${room}: too little countdown left`);
+        return s;
+      }
+    }
+    throw new Error(`Room ${room}: automated players never finished joining`);
+  };
 
   it('is off by default', async () => {
     expect((await state('plain')).room.automatedPlayers).toBe(0);
@@ -104,7 +122,8 @@ describe('automated players (integration)', () => {
 
   it('keeps the staff record when every automated player was skipped', async () => {
     await enable('unfunded', 3);
-    const ready = await automatedRound('unfunded', 3, 900);
+    // This room's countdown is 2 s: just take the round that announced them and check its final record.
+    const ready = await until('unfunded', (x) => x.room.automatedPlayers === 3);
     await disable('unfunded');
     await until('unfunded', (s) => s.round.number > ready.round.number);
     const rounds = (await http.get('/api/admin/rounds').set(auth(staff)).expect(200)).body;
@@ -158,7 +177,7 @@ describe('automated players (integration)', () => {
     await fund(1000, 'TEST-FUND-2');
     const players = await Promise.all(Array.from({ length: 10 }, (_, i) => player(10 + i)));
     await enable('full', 50);
-    const ready = await automatedRound('full', 50, 6000);
+    const ready = await automatedRound('full', 50, 2500);
     await disable('full');
     expect(ready.round).toMatchObject({ players: 0, automated: 50 });
     const afterJoin = await bankroll();
@@ -187,7 +206,7 @@ describe('automated players (integration)', () => {
   it('plays with automated players only (several cards each), with no house cut, so the bankroll gets its pool back', async () => {
     const revenue = () => db.ledgerAccount.findUnique({ where: { code: 'SYSTEM:HOUSE_REVENUE' } }).then((a) => a?.balanceMinor ?? 0n);
     await enable('solo', 3, 3);
-    const open = await automatedRound('solo', 3, 1000);
+    const open = await automatedRound('solo', 3, 0);
     await disable('solo');
     // 3 automated players, each with 1 to 3 random cards at the normal stake.
     const round = await db.round.findFirstOrThrow({ where: { roomId: 'solo', number: open.round.number } });
@@ -241,7 +260,7 @@ describe('automated players (integration)', () => {
     const card = Array.from({ length: 400 }, (_, i) => i + 1).find((n) => !ready.round.taken.includes(n))!;
     await buy('refund', p.token, [card]).expect(200);
     // 4 cards is under this room's minimum of 10: cancelled and refunded.
-    await until('refund', (x) => x.round.number === ready.round.number && x.round.status === 'CANCELLED', 15_000);
+    await until('refund', (x) => x.round.number === ready.round.number && x.round.status === 'CANCELLED', 45_000);
     expect(await bankroll()).toBe(afterJoin + 3000n);
     expect(await mainBalance(p.user.id)).toBe(10_000n);
     expect(await app.get(LedgerService).trialBalance()).toBe(0n);
@@ -299,4 +318,23 @@ describe('automated players (integration)', () => {
     const room = await db.room.findUniqueOrThrow({ where: { id: 'concurrent-edits' } });
     expect(room.automatedPlayers * room.automatedMaxCards).toBeLessThan(room.cardPool);
   });
+
+  it('brings automated players in gradually during the countdown, not all at once', async () => {
+    await fund(1000, 'TEST-FUND-GRADUAL');
+    await enable('full', 30);
+    const open = await until('full', (x) => x.room.automatedPlayers === 30 && x.round.status === 'SELECTING' && x.round.automated < 30);
+    await disable('full');
+    const counts: number[] = [];
+    for (let s = open; s.round.number === open.round.number && s.round.status === 'SELECTING'; s = await state('full')) {
+      if (counts.at(-1) !== s.round.automated) counts.push(s.round.automated);
+      if (s.round.automated === 30) break;
+      await sleep(150);
+    }
+    expect(counts.at(-1)).toBe(30);
+    expect(counts.length).toBeGreaterThan(3); // several steps, e.g. 2 → 7 → 12 → … → 30
+    for (let i = 1; i < counts.length; i++) expect(counts[i]).toBeGreaterThan(counts[i - 1]);
+    await until('full', (x) => x.round.number !== open.round.number || x.round.status !== 'SELECTING', 60_000);
+    await until('full', (x) => x.room.automatedPlayers === 0, 60_000);
+    expect(await app.get(LedgerService).trialBalance()).toBe(0n);
+  }, 120_000);
 });

@@ -109,6 +109,11 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
   const { t } = useI18n();
   const taken = useMemo(() => new Set(state.round.taken), [state.round.taken]);
   const automatedCards = useMemo(() => new Set(state.round.automatedCards ?? []), [state.round.automatedCards]);
+  // When each automated card was first seen, so a card that was just taken flashes for a moment.
+  const seenAt = useRef(new Map<number, number>());
+  const firstLoad = useRef(true);
+  for (const n of automatedCards) if (!seenAt.current.has(n)) seenAt.current.set(n, firstLoad.current ? 0 : Date.now());
+  firstLoad.current = false;
   const automated = state.room.automatedPlayers ?? 0;
   const showAutomatedNotice = automated > 0 && !state.room.entriesPaused;
   const max = state.room.maxCardsPerPlayer;
@@ -198,6 +203,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
             const isTaken = !isMine && taken.has(n);
             const isBusy = busy.has(n);
             const isAutomated = isTaken && automatedCards.has(n);
+            const justTaken = isAutomated && Date.now() - (seenAt.current.get(n) ?? 0) < 1500;
             const look = isMine
               ? 'bg-gold text-gold-ink border-gold'
               : isAutomated
@@ -214,7 +220,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
                 aria-pressed={isMine}
                 aria-label={`Card ${n}${isMine ? ', yours' : isAutomated ? `, ${t('automatedTaken')}` : isTaken ? ', taken' : ''}`}
                 aria-describedby={showAutomatedNotice && !isMine && !isTaken ? 'automated-card-disclosure' : undefined}
-                className={`aspect-square min-w-0 rounded-md border text-[11px] font-bold tabular-nums transition-colors ${look} ${isBusy ? 'animate-pulse' : ''}`}
+                className={`aspect-square min-w-0 rounded-md border text-[11px] font-bold tabular-nums transition-colors ${look} ${isBusy ? 'animate-pulse' : ''} ${justTaken ? 'pop ring-2 ring-sky-400' : ''}`}
               >
                 {n}
               </button>
