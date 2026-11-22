@@ -4,7 +4,7 @@ import { PaymentMethod } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Min } from 'class-validator';
 import { verifyInitData } from './auth/telegram-init-data';
-import { GameService, MIN_PLAYERS } from './bingo/game.service';
+import { GameService, MIN_PLAYERS, PRACTICE_ROOM_ID } from './bingo/game.service';
 import { lineName } from './bingo/cards';
 import { AppError, CurrentUser, Public, money, type AuthUser } from './common/common';
 import { APP_CONFIG, type AppConfig } from './config/config';
@@ -140,7 +140,7 @@ export class MeController {
   @Get('games')
   async games(@CurrentUser() auth: AuthUser) {
     const cards = await this.prisma.card.findMany({
-      where: { userId: auth.id },
+      where: { userId: auth.id, round: { roomId: { not: PRACTICE_ROOM_ID } } },
       orderBy: { createdAt: 'desc' },
       take: 120,
       include: { round: { select: { id: true, number: true, roomId: true, status: true, createdAt: true } } },
@@ -192,7 +192,7 @@ export class GameController {
             prize: round.prize,
             selectEndsAt: round.selectEndsAt,
             calls: round.calls.length,
-            needPlayers: Math.max(0, MIN_PLAYERS - round.players),
+            needPlayers: Math.max(0, (room.practice ? 1 : MIN_PLAYERS) - round.players),
             nextRoundAt: s.result?.nextRoundAt ?? s.cancelled?.nextRoundAt ?? null,
           },
         },
@@ -282,4 +282,3 @@ export class PaymentsController {
     return (await this.payments.myWithdrawals(auth.id)).map(withdrawalView);
   }
 }
-

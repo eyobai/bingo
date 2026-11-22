@@ -26,6 +26,7 @@ export type RoundStatus = 'SELECTING' | 'DRAWING' | 'FINISHED' | 'CANCELLED';
 export interface Winner {
   cardNo: number;
   name: string;
+  sampleNo?: number;
   lineIndex: number;
   layout: number[];
 }
@@ -34,6 +35,8 @@ export interface Winner {
 export interface LobbyRoom {
   id: string;
   name: string;
+  practice: boolean;
+  samplePlayers: number;
   stake: Money;
   cardPool: number;
   selectSeconds: number;
@@ -60,6 +63,8 @@ export interface RoomState {
   room: {
     id: string;
     name: string;
+    practice: boolean;
+    samplePlayers: number;
     stake: Money;
     cardPool: number;
     maxCardsPerPlayer: number;

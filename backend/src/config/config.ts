@@ -22,6 +22,7 @@ export const envSchema = Joi.object({
   CARD_SET_SEED: Joi.string().min(4).default('bingo-cards-v1'),
   RESULT_SECONDS: Joi.number().integer().min(2).max(60).default(8),
   SEED_ROOMS: Joi.boolean().default(true),
+  PRACTICE_ROOM_ENABLED: Joi.boolean().default(false),
 
   DEPOSIT_MIN_BIRR: Joi.number().integer().min(1).default(100),
   WITHDRAW_MIN_BIRR: Joi.number().integer().min(1).default(100),
@@ -59,6 +60,7 @@ export interface AppConfig {
   cardSetSeed: string;
   resultSeconds: number;
   seedRooms: boolean;
+  practiceRoomEnabled: boolean;
   money: {
     depositMinMinor: bigint;
     withdrawMinMinor: bigint;
@@ -100,6 +102,7 @@ export function buildConfig(env: Record<string, any>): AppConfig {
     cardSetSeed: env.CARD_SET_SEED,
     resultSeconds: env.RESULT_SECONDS,
     seedRooms: env.SEED_ROOMS,
+    practiceRoomEnabled: env.PRACTICE_ROOM_ENABLED,
     money: {
       depositMinMinor: birr(env.DEPOSIT_MIN_BIRR),
       withdrawMinMinor: birr(env.WITHDRAW_MIN_BIRR),

@@ -15,6 +15,22 @@ import { settle } from './prize';
 const CLOSE_GRACE_MS = 300;
 const CANCELLED_PAUSE_MS = 4000;
 export const MIN_PLAYERS = 2;
+export const PRACTICE_ROOM_ID = 'practice';
+
+const PRACTICE_ROOM = {
+  name: 'Practice',
+  stakeMinor: 0n,
+  guaranteedPrizeMinor: 0n,
+  houseCutBps: 0,
+  cardPool: 100,
+  minCards: 1,
+  selectSeconds: 20,
+  callIntervalMs: 2000,
+  sortOrder: -1,
+  isActive: true,
+};
+// Reserved cards let sample players resume with the round without creating user or wallet records.
+const SAMPLE_CARDS = [PRACTICE_ROOM.cardPool - 1, PRACTICE_ROOM.cardPool];
 
 /** One room per stake, shown in the lobby in this order. */
 const DEFAULT_ROOMS = [
@@ -30,9 +46,12 @@ export const MAX_CARD_POOL = 1000;
 interface LiveWinner {
   cardNo: number;
   name: string;
+  sampleNo?: number;
   lineIndex: number;
   layout: CardLayout;
 }
+
+type DrawWinner = { cardNo: number; lineIndex: number } & ({ userId: string } | { sampleNo: number });
 
 interface LiveRoom {
   room: Room;
@@ -87,14 +106,23 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       // Rename the first room from its old default name to match the others.
       await this.prisma.room.updateMany({ where: { id: 'r10', name: '10 Birr Game' }, data: { name: 'Classic' } });
     }
-    const rooms = await this.prisma.room.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } });
+    const rooms = await this.prisma.room.findMany({ where: { isActive: true, id: { not: PRACTICE_ROOM_ID } }, orderBy: { sortOrder: 'asc' } });
+    if (this.config.practiceRoomEnabled) {
+      rooms.push(
+        await this.prisma.room.upsert({
+          where: { id: PRACTICE_ROOM_ID },
+          create: { id: PRACTICE_ROOM_ID, ...PRACTICE_ROOM },
+          update: PRACTICE_ROOM,
+        }),
+      );
+    }
     this.cardSet = generateCardSet(MAX_CARD_POOL, this.config.cardSetSeed);
     for (const room of rooms) await this.resume(room);
   }
 
   /** Starts a room that staff just switched on. A running room picks up new settings at its next round. */
   async ensureRoom(roomId: string) {
-    if (this.live.has(roomId)) return;
+    if (roomId === PRACTICE_ROOM_ID || this.live.has(roomId)) return;
     const room = await this.prisma.room.findUnique({ where: { id: roomId } });
     if (room?.isActive) await this.resume(room);
   }
@@ -102,6 +130,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
   onModuleDestroy() {
     this.stopped = true;
     for (const l of this.live.values()) clearTimeout(l.timer);
+    for (const timer of this.pending.values()) clearTimeout(timer);
   }
 
   // ─── Public reads ─────────────────────────────────────────────────────────
@@ -122,7 +151,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
   /** The prize if every card in the room were sold: the most a single winner can get in one round. */
   maxWinMinor(roomId: string): bigint {
     const l = this.live.get(roomId);
-    if (!l) return 0n;
+    if (!l || roomId === PRACTICE_ROOM_ID) return 0n;
     const { room } = l;
     return settle({ stakeTotalMinor: BigInt(room.cardPool) * room.stakeMinor, houseCutBps: room.houseCutBps, guaranteedMinor: room.guaranteedPrizeMinor, winners: 1 }).prizeMinor;
   }
@@ -132,8 +161,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const l = this.live.get(roomId);
     if (!l) return null;
     const { room, round } = l;
+    const practice = roomId === PRACTICE_ROOM_ID;
     const preview =
-      round.stakeTotalMinor > 0n || round.guaranteedMinor > 0n
+      !practice && (round.stakeTotalMinor > 0n || round.guaranteedMinor > 0n)
         ? settle({ stakeTotalMinor: round.stakeTotalMinor, houseCutBps: round.houseCutBps, guaranteedMinor: round.guaranteedMinor, winners: 1 }).prizeMinor
         : 0n;
     const finished = round.status === RoundStatus.FINISHED;
@@ -142,6 +172,8 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       room: {
         id: room.id,
         name: room.name,
+        practice,
+        samplePlayers: practice ? SAMPLE_CARDS.length : 0,
         stake: money(room.stakeMinor),
         cardPool: room.cardPool,
         maxCardsPerPlayer: room.maxCardsPerPlayer,
@@ -161,7 +193,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         cardsSold: round.cardsSold,
         players: new Set(l.cards.values()).size,
         prize: money(finished ? round.prizeMinor : preview),
-        taken: [...l.cards.keys()].sort((a, b) => a - b),
+        taken: [...l.cards.keys(), ...(practice ? SAMPLE_CARDS : [])].sort((a, b) => a - b),
       },
       result: l.result
         ? {
@@ -184,12 +216,13 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
 
   async buyCards(userId: string, roomId: string, cardNos: number[]) {
     const l = this.requireRoom(roomId);
+    const practice = roomId === PRACTICE_ROOM_ID;
     const unique = [...new Set(cardNos)];
     if (!unique.length || unique.some((n) => !Number.isInteger(n) || n < 1 || n > l.room.cardPool)) {
       throw new AppError(HttpStatus.BAD_REQUEST, 'BAD_CARD', `Pick card numbers between 1 and ${l.room.cardPool}.`);
     }
     const roundId = l.round.id;
-    const stake = l.room.stakeMinor;
+    const stake = practice ? 0n : l.room.stakeMinor;
     try {
       await this.ledger.withTx(async (tx) => {
         const round = await this.lockRound(tx, roundId);
@@ -209,8 +242,8 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
           select: { cardNo: true, userId: true },
         });
         const owned = relevant.filter((c) => c.userId === userId).length;
-        const taken = relevant.filter((c) => unique.includes(c.cardNo));
-        if (taken.length) throw this.takenError(taken.map((t) => t.cardNo));
+        const taken = unique.filter((n) => relevant.some((c) => c.cardNo === n) || (practice && SAMPLE_CARDS.includes(n)));
+        if (taken.length) throw this.takenError(taken);
         if (owned + unique.length > l.room.maxCardsPerPlayer) {
           throw new AppError(
             HttpStatus.UNPROCESSABLE_ENTITY,
@@ -219,9 +252,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
           );
         }
 
-        const { main, play } = await this.ledger.userAccounts(userId, tx);
+        const accounts = practice ? undefined : await this.ledger.userAccounts(userId, tx);
         // Bonus (play) money is spent first, card by card.
-        let playLeft = play.balanceMinor;
+        let playLeft = accounts?.play.balanceMinor ?? 0n;
         const rows = unique.map((cardNo) => {
           const fromPlay = playLeft >= stake ? stake : playLeft > 0n ? playLeft : 0n;
           playLeft -= fromPlay;
@@ -229,21 +262,23 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         });
         await tx.card.createMany({ data: rows });
         const total = stake * BigInt(rows.length);
-        const fromPlay = rows.reduce((s, r) => s + r.paidPlayMinor, 0n);
-        const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
-        await this.ledger.post(
-          {
-            type: TxType.CARD_PURCHASE,
-            description: `Round #${round.number}: card${rows.length > 1 ? 's' : ''} ${unique.map((n) => '#' + n).join(', ')}`,
-            metadata: { roundId, cards: unique },
-            lines: [
-              { accountId: play.id, amountMinor: -fromPlay },
-              { accountId: main.id, amountMinor: -(total - fromPlay) },
-              { accountId: pot.id, amountMinor: total },
-            ],
-          },
-          tx,
-        );
+        if (accounts) {
+          const fromPlay = rows.reduce((s, r) => s + r.paidPlayMinor, 0n);
+          const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
+          await this.ledger.post(
+            {
+              type: TxType.CARD_PURCHASE,
+              description: `Round #${round.number}: card${rows.length > 1 ? 's' : ''} ${unique.map((n) => '#' + n).join(', ')}`,
+              metadata: { roundId, cards: unique },
+              lines: [
+                { accountId: accounts.play.id, amountMinor: -fromPlay },
+                { accountId: accounts.main.id, amountMinor: -(total - fromPlay) },
+                { accountId: pot.id, amountMinor: total },
+              ],
+            },
+            tx,
+          );
+        }
         const updated = await tx.round.update({
           where: { id: roundId },
           data: { cardsSold: { increment: rows.length }, stakeTotalMinor: { increment: total } },
@@ -259,13 +294,14 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     }
     if (l.round.id === roundId) for (const n of unique) l.cards.set(n, userId);
     this.changed(roomId);
-    this.notify.emit('walletChanged', userId);
+    if (!practice) this.notify.emit('walletChanged', userId);
     return this.myCards(roomId, userId);
   }
 
   /** Gives a card back before the countdown ends; the money returns to where it came from. */
   async returnCard(userId: string, roomId: string, cardNo: number) {
     const l = this.requireRoom(roomId);
+    const practice = roomId === PRACTICE_ROOM_ID;
     const roundId = l.round.id;
     await this.ledger.withTx(async (tx) => {
       const round = await this.lockRound(tx, roundId);
@@ -273,22 +309,24 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       const card = await tx.card.findUnique({ where: { roundId_cardNo: { roundId, cardNo } } });
       if (!card || card.userId !== userId) throw new AppError(HttpStatus.NOT_FOUND, 'NOT_YOUR_CARD', 'That card is not yours.');
       await tx.card.delete({ where: { id: card.id } });
-      const { main, play } = await this.ledger.userAccounts(userId, tx);
-      const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
       const total = card.paidPlayMinor + card.paidMainMinor;
-      await this.ledger.post(
-        {
-          type: TxType.CARD_REFUND,
-          description: `Round #${round.number}: card #${cardNo} returned`,
-          metadata: { roundId, cardNo },
-          lines: [
-            { accountId: pot.id, amountMinor: -total },
-            { accountId: play.id, amountMinor: card.paidPlayMinor },
-            { accountId: main.id, amountMinor: card.paidMainMinor },
-          ],
-        },
-        tx,
-      );
+      if (!practice) {
+        const { main, play } = await this.ledger.userAccounts(userId, tx);
+        const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
+        await this.ledger.post(
+          {
+            type: TxType.CARD_REFUND,
+            description: `Round #${round.number}: card #${cardNo} returned`,
+            metadata: { roundId, cardNo },
+            lines: [
+              { accountId: pot.id, amountMinor: -total },
+              { accountId: play.id, amountMinor: card.paidPlayMinor },
+              { accountId: main.id, amountMinor: card.paidMainMinor },
+            ],
+          },
+          tx,
+        );
+      }
       const updated = await tx.round.update({
         where: { id: roundId },
         data: { cardsSold: { decrement: 1 }, stakeTotalMinor: { decrement: total } },
@@ -297,7 +335,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     });
     if (l.round.id === roundId) l.cards.delete(cardNo);
     this.changed(roomId);
-    this.notify.emit('walletChanged', userId);
+    if (!practice) this.notify.emit('walletChanged', userId);
     return this.myCards(roomId, userId);
   }
 
@@ -321,8 +359,15 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     };
     this.live.set(room.id, l);
     this.logger.log(`Resumed ${room.id} round #${round.number} (${round.status})`);
-    if (round.status === RoundStatus.SELECTING) this.schedule(l, round.selectEndsAt.getTime() - Date.now(), () => this.closeSelection(l));
-    else this.schedule(l, room.callIntervalMs, () => this.drawNext(l));
+    if (round.status === RoundStatus.SELECTING) {
+      this.schedule(l, round.selectEndsAt.getTime() - Date.now(), () => this.closeSelection(l));
+    } else {
+      this.schedule(l, room.callIntervalMs, async () => {
+        const winners = this.findWinners(l);
+        if (winners.length) await this.finish(l, winners);
+        else await this.drawNext(l);
+      });
+    }
   }
 
   private async openRound(room: Room) {
@@ -354,12 +399,17 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
 
   private async closeSelection(l: LiveRoom) {
     const roundId = l.round.id;
+    const practice = l.room.id === PRACTICE_ROOM_ID;
     const outcome = await this.ledger.withTx(async (tx) => {
       const round = await this.lockRound(tx, roundId);
       if (round.status !== RoundStatus.SELECTING) return 'skip' as const;
       const cards = await tx.card.findMany({ where: { roundId } });
       const players = new Set(cards.map((c) => c.userId)).size;
-      if (cards.length < l.room.minCards || players < MIN_PLAYERS) {
+      if (practice && !players) {
+        const selectEndsAt = new Date(Date.now() + l.room.selectSeconds * 1000);
+        return tx.round.update({ where: { id: roundId }, data: { selectEndsAt } });
+      }
+      if (!practice && (cards.length < l.room.minCards || players < MIN_PLAYERS)) {
         await this.refundAll(tx, round, cards);
         await tx.round.update({ where: { id: roundId }, data: { status: RoundStatus.CANCELLED, finishedAt: new Date() } });
         return cards.length ? ('refunded' as const) : ('empty' as const);
@@ -370,6 +420,12 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       return 'started' as const;
     });
 
+    if (typeof outcome !== 'string') {
+      l.round = outcome;
+      this.changed(l.room.id);
+      this.schedule(l, l.round.selectEndsAt.getTime() - Date.now(), () => this.closeSelection(l));
+      return;
+    }
     if (outcome === 'started') {
       this.changed(l.room.id);
       this.schedule(l, 1200, () => this.drawNext(l));
@@ -397,11 +453,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     l.round = { ...l.round, calls: [...l.round.calls, ball] };
     l.called.add(ball);
 
-    const winners: { cardNo: number; userId: string; lineIndex: number }[] = [];
-    for (const [cardNo, userId] of l.cards) {
-      const lines = completeLines(this.cardSet[cardNo - 1], l.called);
-      if (lines.length) winners.push({ cardNo, userId, lineIndex: lines[0] });
-    }
+    const winners = this.findWinners(l);
     if (!winners.length) {
       this.changed(l.room.id);
       this.schedule(l, l.room.callIntervalMs, () => this.drawNext(l));
@@ -410,38 +462,59 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     await this.finish(l, winners);
   }
 
-  private async finish(l: LiveRoom, winners: { cardNo: number; userId: string; lineIndex: number }[]) {
+  private findWinners(l: LiveRoom): DrawWinner[] {
+    const winners: DrawWinner[] = [];
+    for (const [cardNo, userId] of l.cards) {
+      const [lineIndex] = completeLines(this.cardSet[cardNo - 1], l.called);
+      if (lineIndex !== undefined) winners.push({ cardNo, userId, lineIndex });
+    }
+    if (l.room.id === PRACTICE_ROOM_ID) {
+      SAMPLE_CARDS.forEach((cardNo, i) => {
+        const [lineIndex] = completeLines(this.cardSet[cardNo - 1], l.called);
+        if (lineIndex !== undefined) winners.push({ cardNo, sampleNo: i + 1, lineIndex });
+      });
+    }
+    return winners;
+  }
+
+  private async finish(l: LiveRoom, winners: DrawWinner[]) {
     const roundId = l.round.id;
+    const practice = l.room.id === PRACTICE_ROOM_ID;
     const done = await this.ledger.withTx(async (tx) => {
       const round = await this.lockRound(tx, roundId);
       if (round.status !== RoundStatus.DRAWING) return null;
       const s = settle({
-        stakeTotalMinor: round.stakeTotalMinor,
+        stakeTotalMinor: practice ? 0n : round.stakeTotalMinor,
         houseCutBps: round.houseCutBps,
-        guaranteedMinor: round.guaranteedMinor,
+        guaranteedMinor: practice ? 0n : round.guaranteedMinor,
         winners: winners.length,
       });
-      const lines: PostingLine[] = [];
-      const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
-      lines.push({ accountId: pot.id, amountMinor: -round.stakeTotalMinor });
-      if (s.topUpMinor > 0n) lines.push({ accountId: (await this.ledger.systemAccount(AccountType.PROMOTIONS, tx)).id, amountMinor: -s.topUpMinor });
-      if (s.houseCutMinor > 0n) lines.push({ accountId: (await this.ledger.systemAccount(AccountType.HOUSE_REVENUE, tx)).id, amountMinor: s.houseCutMinor });
+      const humanWinners = winners.filter((w) => 'userId' in w);
       const perUser = new Map<string, bigint>();
-      for (const w of winners) perUser.set(w.userId, (perUser.get(w.userId) ?? 0n) + s.prizePerWinnerMinor);
-      for (const [userId, amount] of perUser) lines.push({ accountId: (await this.ledger.userAccounts(userId, tx)).main.id, amountMinor: amount });
-      await this.ledger.post(
-        {
-          type: TxType.ROUND_SETTLEMENT,
-          description: `Round #${round.number}: bingo prize`,
-          idempotencyKey: `settle:${round.id}`,
-          metadata: { roundId: round.id, winners: winners.map((w) => w.cardNo) },
-          lines,
-        },
-        tx,
-      );
-      await tx.winner.createMany({
-        data: winners.map((w) => ({ roundId, cardNo: w.cardNo, userId: w.userId, lineIndex: w.lineIndex, prizeMinor: s.prizePerWinnerMinor })),
-      });
+      for (const w of humanWinners) perUser.set(w.userId, (perUser.get(w.userId) ?? 0n) + s.prizePerWinnerMinor);
+      if (!practice) {
+        const lines: PostingLine[] = [];
+        const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
+        lines.push({ accountId: pot.id, amountMinor: -round.stakeTotalMinor });
+        if (s.topUpMinor > 0n) lines.push({ accountId: (await this.ledger.systemAccount(AccountType.PROMOTIONS, tx)).id, amountMinor: -s.topUpMinor });
+        if (s.houseCutMinor > 0n) lines.push({ accountId: (await this.ledger.systemAccount(AccountType.HOUSE_REVENUE, tx)).id, amountMinor: s.houseCutMinor });
+        for (const [userId, amount] of perUser) lines.push({ accountId: (await this.ledger.userAccounts(userId, tx)).main.id, amountMinor: amount });
+        await this.ledger.post(
+          {
+            type: TxType.ROUND_SETTLEMENT,
+            description: `Round #${round.number}: bingo prize`,
+            idempotencyKey: `settle:${round.id}`,
+            metadata: { roundId: round.id, winners: winners.map((w) => w.cardNo) },
+            lines,
+          },
+          tx,
+        );
+      }
+      if (humanWinners.length) {
+        await tx.winner.createMany({
+          data: humanWinners.map((w) => ({ roundId, cardNo: w.cardNo, userId: w.userId, lineIndex: w.lineIndex, prizeMinor: s.prizePerWinnerMinor })),
+        });
+      }
       const finished = await tx.round.update({
         where: { id: roundId },
         data: {
@@ -464,13 +537,15 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       nextRoundAt,
       winners: winners.map((w) => ({
         cardNo: w.cardNo,
-        name: (done.names.get(w.userId) ?? 'Player').slice(0, 20),
+        ...('sampleNo' in w
+          ? { name: `Sample player ${w.sampleNo}`, sampleNo: w.sampleNo }
+          : { name: (done.names.get(w.userId) ?? 'Player').slice(0, 20) }),
         lineIndex: w.lineIndex,
         layout: this.cardSet[w.cardNo - 1],
       })),
     };
     this.changed(l.room.id);
-    for (const u of done.perUser.keys()) this.notify.emit('walletChanged', u);
+    if (!practice) for (const u of done.perUser.keys()) this.notify.emit('walletChanged', u);
     this.schedule(l, this.config.resultSeconds * 1000, () => this.openRound(l.room));
   }
 

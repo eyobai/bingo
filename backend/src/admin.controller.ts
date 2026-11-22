@@ -2,7 +2,6 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query 
 import { Matches } from 'class-validator';
 import { StaffAuthService } from './auth/staff-auth.service';
 import { BotService } from './bot/bot.service';
-import { MAX_CARD_POOL } from './bingo/game.service';
 import { WalletService } from './wallet/wallet.service';
 import { CODE_PATTERN, normalizeCode, promoView } from './promo/promo.service';
 import { randomInt } from 'node:crypto';
@@ -10,7 +9,7 @@ import { IsDateString } from 'class-validator';
 import { AccountType, DepositStatus, Prisma, TxType, WithdrawalStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Max, Min } from 'class-validator';
-import { GameService } from './bingo/game.service';
+import { GameService, MAX_CARD_POOL, PRACTICE_ROOM_ID } from './bingo/game.service';
 import { AdminOnly, AppError, CurrentUser, Public, money, type AuthUser } from './common/common';
 import { LedgerService } from './ledger/ledger.service';
 import { PaymentsService, depositView, withdrawalView } from './payments/payments.service';
@@ -91,7 +90,7 @@ export class AdminController {
     const since = new Date(Date.now() - days * 86_400_000);
     const [rounds, players, newPlayers, pendingDeposits, pendingWithdrawals, deposits, withdrawals] = await Promise.all([
       this.prisma.round.aggregate({
-        where: { status: 'FINISHED', finishedAt: { gte: since } },
+        where: { status: 'FINISHED', finishedAt: { gte: since }, roomId: { not: PRACTICE_ROOM_ID } },
         _count: true,
         _sum: { stakeTotalMinor: true, prizeMinor: true, houseCutMinor: true, topUpMinor: true, cardsSold: true },
       }),
@@ -170,13 +169,14 @@ export class AdminController {
 
   @Get('rooms')
   rooms() {
-    return this.prisma.room.findMany({ orderBy: { sortOrder: 'asc' } }).then((rows) =>
+    return this.prisma.room.findMany({ where: { id: { not: PRACTICE_ROOM_ID } }, orderBy: { sortOrder: 'asc' } }).then((rows) =>
       rows.map((r) => ({ ...r, stakeMinor: money(r.stakeMinor), guaranteedPrizeMinor: money(r.guaranteedPrizeMinor) })),
     );
   }
 
   @Patch('rooms/:id')
   async updateRoom(@Param('id') id: string, @Body() body: RoomUpdateDto) {
+    if (id === PRACTICE_ROOM_ID) throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'This room is not configurable here.');
     const { guaranteedPrizeBirr, stakeBirr, ...rest } = body;
     const r = await this.prisma.room.update({
       where: { id },
@@ -192,7 +192,7 @@ export class AdminController {
 
   @Get('rounds')
   async rounds() {
-    const rows = await this.prisma.round.findMany({ orderBy: { number: 'desc' }, take: 50, include: { winners: true } });
+    const rows = await this.prisma.round.findMany({ where: { roomId: { not: PRACTICE_ROOM_ID } }, orderBy: { number: 'desc' }, take: 50, include: { winners: true } });
     return rows.map((r) => ({
       number: r.number,
       roomId: r.roomId,
@@ -249,8 +249,8 @@ export class AdminController {
       this.wallet.history(id, 50),
       this.prisma.deposit.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 20 }),
       this.prisma.withdrawal.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 20 }),
-      this.prisma.card.aggregate({ where: { userId: id }, _count: true, _sum: { paidMainMinor: true, paidPlayMinor: true } }),
-      this.prisma.winner.aggregate({ where: { userId: id }, _count: true, _sum: { prizeMinor: true } }),
+      this.prisma.card.aggregate({ where: { userId: id, round: { roomId: { not: PRACTICE_ROOM_ID } } }, _count: true, _sum: { paidMainMinor: true, paidPlayMinor: true } }),
+      this.prisma.winner.aggregate({ where: { userId: id, round: { roomId: { not: PRACTICE_ROOM_ID } } }, _count: true, _sum: { prizeMinor: true } }),
       this.prisma.user.count({ where: { referredById: id } }),
     ]);
     const deposited = deposits.filter((d) => d.status === 'APPROVED').reduce((s, d) => s + d.amountMinor, 0n);
@@ -395,7 +395,7 @@ export class AdminController {
   /** Not used by the game; handy to check the engine is alive. */
   @Get('live')
   live() {
-    return this.game.roomIds().map((id) => this.game.publicState(id));
+    return this.game.roomIds().filter((id) => id !== PRACTICE_ROOM_ID).map((id) => this.game.publicState(id));
   }
 }
 

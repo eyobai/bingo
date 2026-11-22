@@ -185,6 +185,12 @@ or tap **Reject** and it returns to the wallet. One pending withdrawal per playe
 
 ## The game
 
+Set `PRACTICE_ROOM_ENABLED=true` in the backend `.env` (or `deploy/.env` on the server) and restart
+the updated app to add **Practice** to the Games lobby. Signed-in players can pick free cards and
+play against two labeled sample players. At least one real player must pick a card for a draw to start.
+Practice rounds have no stakes or cash prizes and are excluded from paid-game history and staff
+financial reports. Set the flag back to `false` and restart to hide the room.
+
 - Rooms are rows in the `rooms` table (stake, card pool, countdown, ball speed, house share, minimum cards,
   guaranteed prize). Staff change them with `PATCH /api/admin/rooms/:id`; changes apply from the next round.
 - A round with fewer than `minCards` cards, or fewer than 2 players, is cancelled and every card refunded.
