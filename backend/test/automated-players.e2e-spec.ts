@@ -101,6 +101,9 @@ describe('automated players (integration)', () => {
     await fund(25, 'TEST-FUND-1'); // pays for 2 of the 5 announced 10-birr entries
     await fund(25, 'TEST-FUND-1'); // the same transfer recorded twice counts once
     await http.post('/api/admin/house-bankroll/funding').set(auth(staff)).send({ amountBirr: '30', bankReference: 'TEST-FUND-1' }).expect(409);
+    const duplicate = await http.post('/api/admin/house-bankroll/withdrawal').set(auth(staff))
+      .send({ amountBirr: '25', bankReference: 'test-fund-1' }).expect(409);
+    expect(duplicate.body.code).toBe('REFERENCE_USED');
     expect(await bankroll()).toBe(2500n);
 
     await enable('short', 5);
