@@ -19,7 +19,7 @@ export interface PostingInput {
 }
 
 /** System accounts that may go below zero: they record money that came from or left to the outside. */
-const ALLOW_NEGATIVE: AccountType[] = [AccountType.PAYMENT_CLEARING, AccountType.PROMOTIONS, AccountType.ADJUSTMENTS];
+const ALLOW_NEGATIVE: AccountType[] = [AccountType.PAYMENT_CLEARING, AccountType.PROMOTIONS, AccountType.ADJUSTMENTS, AccountType.HOUSE_CAPITAL];
 const USER_TYPES: AccountType[] = [AccountType.USER_MAIN, AccountType.USER_PLAY, AccountType.USER_WITHDRAW_HOLD];
 
 export interface UserAccounts {
@@ -55,6 +55,13 @@ export class LedgerService {
     return tx ? fn(tx) : this.prisma.$transaction(fn, TX_OPTIONS);
   }
 
+  async lockAccounts(tx: Tx, ids: string[]) {
+    const rows = await tx.$queryRaw<{ id: string; code: string; type: AccountType; allow_negative: boolean; balance_minor: bigint }[]>`
+      SELECT id, code, type, allow_negative, balance_minor FROM ledger_accounts
+      WHERE id = ANY(${ids}::uuid[]) ORDER BY id FOR UPDATE`;
+    return new Map(rows.map((row) => [row.id, row]));
+  }
+
   async post(input: PostingInput, tx: Tx) {
     const lines = input.lines.filter((l) => l.amountMinor !== 0n);
     validateLines(lines);
@@ -62,11 +69,7 @@ export class LedgerService {
       const earlier = await tx.ledgerTransaction.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
       if (earlier) return earlier;
     }
-    const ids = lines.map((l) => l.accountId).sort();
-    const locked = await tx.$queryRaw<{ id: string; code: string; type: AccountType; allow_negative: boolean; balance_minor: bigint }[]>`
-      SELECT id, code, type, allow_negative, balance_minor FROM ledger_accounts
-      WHERE id = ANY(${ids}::uuid[]) ORDER BY id FOR UPDATE`;
-    const byId = new Map(locked.map((a) => [a.id, a]));
+    const byId = await this.lockAccounts(tx, lines.map((l) => l.accountId));
 
     const created = await tx.ledgerTransaction.create({
       data: {

@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Par
 import { JwtService } from '@nestjs/jwt';
 import { PaymentMethod } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Min } from 'class-validator';
 import { verifyInitData } from './auth/telegram-init-data';
 import { GameService, HOUSE_CASH_ROOM_ID, MIN_PLAYERS, PRACTICE_ROOM_ID } from './bingo/game.service';
 import { lineName } from './bingo/cards';
@@ -30,6 +30,8 @@ class LanguageDto {
 }
 class BuyCardsDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(10) @IsInt({ each: true }) cardNos!: number[];
+  /** The player confirmed the disclosure that house-funded automated players take part and can win. */
+  @IsOptional() @IsBoolean() acceptAutomatedPlayers?: boolean;
 }
 class DepositDto {
   @IsIn(Object.values(PaymentMethod)) method!: PaymentMethod;
@@ -193,7 +195,8 @@ export class GameController {
             prize: round.prize,
             selectEndsAt: round.selectEndsAt,
             calls: round.calls.length,
-            needPlayers: Math.max(0, (room.practice ? 1 : MIN_PLAYERS) - round.players),
+            automated: round.automated,
+            needPlayers: needPlayers(room.practice, round.players, round.automated, room.automatedPlayers),
             nextRoundAt: s.result?.nextRoundAt ?? s.cancelled?.nextRoundAt ?? null,
           },
         },
@@ -229,7 +232,7 @@ export class GameController {
   @Post('rooms/:roomId/cards')
   @HttpCode(HttpStatus.OK)
   async buy(@CurrentUser() auth: AuthUser, @Param('roomId') roomId: string, @Body() body: BuyCardsDto) {
-    return { cards: await this.game.buyCards(auth.id, roomId, body.cardNos) };
+    return { cards: await this.game.buyCards(auth.id, roomId, body.cardNos, body.acceptAutomatedPlayers === true) };
   }
 
   @Delete('rooms/:roomId/cards/:cardNo')
@@ -287,4 +290,10 @@ export class PaymentsController {
   async withdrawals(@CurrentUser() auth: AuthUser) {
     return (await this.payments.myWithdrawals(auth.id)).map(withdrawalView);
   }
+}
+
+/** Players still needed for the round to start. Automated players who joined count as players. */
+function needPlayers(practice: boolean, humans: number, automatedJoined: number, _automatedAnnounced: number) {
+  if (practice) return Math.max(0, 1 - humans);
+  return Math.max(0, MIN_PLAYERS - humans - automatedJoined);
 }

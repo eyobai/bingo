@@ -29,6 +29,8 @@ export interface Winner {
   sampleNo?: number;
   lineIndex: number;
   layout: number[];
+  /** A house-funded automated player; its prize goes to the house bankroll. */
+  automated?: boolean;
 }
 
 /** One room in the lobby (GET /rooms). */
@@ -37,6 +39,8 @@ export interface LobbyRoom {
   name: string;
   practice: boolean;
   samplePlayers: number;
+  /** House-funded automated players announced for the current round (0 = none). */
+  automatedPlayers: number;
   stake: Money;
   cardPool: number;
   selectSeconds: number;
@@ -49,6 +53,7 @@ export interface LobbyRoom {
     prize: Money;
     selectEndsAt: string;
     calls: number;
+    automated: number;
     needPlayers: number;
     nextRoundAt: string | null;
   };
@@ -69,6 +74,8 @@ export interface RoomState {
     entriesPaused: boolean;
     houseCards: number[];
     samplePlayers: number;
+    automatedPlayers: number;
+    automatedMaxCards: number;
     stake: Money;
     cardPool: number;
     maxCardsPerPlayer: number;
@@ -89,6 +96,9 @@ export interface RoomState {
     players: number;
     prize: Money;
     taken: number[];
+    /** Automated players who joined this round (one card each) and their cards. */
+    automated: number;
+    automatedCards: number[];
   };
   result: { prizePerWinner: Money; nextRoundAt: string; winners: Winner[] } | null;
   cancelled: { reason: string; nextRoundAt: string } | null;

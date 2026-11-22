@@ -1,6 +1,7 @@
 import { HttpStatus, Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { AccountType, RoundStatus, TxType } from '@prisma/client';
 import type { Room, Round } from '@prisma/client';
+import { randomInt } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { AppError, isUniqueViolation, money } from '../common/common';
 import { APP_CONFIG, type AppConfig } from '../config/config';
@@ -33,6 +34,10 @@ const PRACTICE_ROOM = {
 };
 // Reserved cards let sample players resume with the round without creating user or wallet records.
 const SAMPLE_CARDS = [PRACTICE_ROOM.cardPool - 1, PRACTICE_ROOM.cardPool];
+/** How many automated players (not cards) are in a round. */
+export function automatedPlayersIn(round: Pick<Round, 'houseCards' | 'houseOwners'>) {
+  return round.houseOwners.length ? new Set(round.houseOwners).size : round.houseCards.length;
+}
 function reservedCards(round: Round) {
   if (round.roomId === PRACTICE_ROOM_ID) return SAMPLE_CARDS;
   return round.houseCards;
@@ -53,6 +58,8 @@ interface LiveWinner {
   cardNo: number;
   name: string;
   sampleNo?: number;
+  /** A house-funded automated player in a paid room: its prize goes to the house bankroll. */
+  automated?: boolean;
   lineIndex: number;
   layout: CardLayout;
 }
@@ -201,6 +208,10 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         entriesPaused: houseCash,
         samplePlayers: reserved.length,
         houseCards: houseCash ? reserved : [],
+        /** House-funded automated players announced for this round (0 = none). Shown before anyone buys. */
+        automatedPlayers: practice ? 0 : round.housePlanned,
+        /** Each automated player takes 1 up to this many cards. */
+        automatedMaxCards: Math.max(1, Math.min(room.automatedMaxCards, room.maxCardsPerPlayer)),
         stake: money(room.stakeMinor),
         cardPool: room.cardPool,
         maxCardsPerPlayer: room.maxCardsPerPlayer,
@@ -221,6 +232,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         players: new Set(l.cards.values()).size,
         prize: money(finished ? round.prizeMinor : preview),
         taken: [...l.cards.keys(), ...reserved].sort((a, b) => a - b),
+        /** Automated players who joined (one card each) and their card numbers. */
+        automated: practice ? 0 : automatedPlayersIn(round),
+        automatedCards: practice ? [] : [...round.houseCards].sort((a, b) => a - b),
       },
       result: l.result
         ? {
@@ -241,7 +255,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
 
   // ─── Player actions ───────────────────────────────────────────────────────
 
-  async buyCards(userId: string, roomId: string, cardNos: number[]) {
+  async buyCards(userId: string, roomId: string, cardNos: number[], acceptAutomatedPlayers = false) {
     if (roomId === HOUSE_CASH_ROOM_ID) {
       throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'This game room is closed.');
     }
@@ -256,6 +270,13 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       const updated = await this.ledger.withTx(async (tx) => {
         const round = await this.lockRound(tx, roundId);
         this.assertSelling(round);
+        if (round.housePlanned > 0 && !acceptAutomatedPlayers) {
+          throw new AppError(
+            HttpStatus.BAD_REQUEST,
+            'AUTOMATED_TERMS_REQUIRED',
+            'House-funded automated players take part in this room and can win. Confirm you understand before buying a card.',
+          );
+        }
         const stake = practice ? 0n : round.stakeMinor;
         const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
         if (user.isBlocked) throw new AppError(HttpStatus.FORBIDDEN, 'BLOCKED', 'Your account is blocked. Contact support.');
@@ -293,14 +314,18 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         });
         await tx.card.createMany({ data: rows });
         const total = stake * BigInt(rows.length);
+        const joinPending = !practice && round.housePlanned > 0 && !round.houseCards.length && !round.houseSkipped;
         if (accounts) {
           const fromPlay = rows.reduce((s, r) => s + r.paidPlayMinor, 0n);
+          const bankroll = joinPending ? await this.ledger.systemAccount(AccountType.HOUSE_BANKROLL, tx) : undefined;
           const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
+          // The fallback purchase posts twice; lock both postings' accounts together.
+          if (bankroll) await this.ledger.lockAccounts(tx, [accounts.play.id, accounts.main.id, pot.id, bankroll.id]);
           await this.ledger.post(
             {
               type: TxType.CARD_PURCHASE,
               description: `Round #${round.number}: card${rows.length > 1 ? 's' : ''} ${unique.map((n) => '#' + n).join(', ')}`,
-              metadata: { roundId, cards: unique },
+              metadata: { roundId, cards: unique, ...(round.housePlanned > 0 ? { acceptedAutomatedPlayers: true, automatedAnnounced: round.housePlanned } : {}) },
               lines: [
                 { accountId: accounts.play.id, amountMinor: -fromPlay },
                 { accountId: accounts.main.id, amountMinor: -(total - fromPlay) },
@@ -310,12 +335,25 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
             tx,
           );
         }
-        return tx.round.update({
+        const afterHuman = await tx.round.update({
           where: { id: roundId },
           data: { cardsSold: { increment: rows.length }, stakeTotalMinor: { increment: total } },
         });
+        // Normally automated players join when the countdown starts; if that failed, they join now.
+        if (joinPending) {
+          return this.joinAutomated(tx, afterHuman);
+        }
+        return afterHuman;
       });
-      l.round = { ...l.round, cardsSold: updated.cardsSold, stakeTotalMinor: updated.stakeTotalMinor };
+      l.round = {
+        ...l.round,
+        cardsSold: updated.cardsSold,
+        stakeTotalMinor: updated.stakeTotalMinor,
+        houseCards: updated.houseCards,
+        houseOwners: updated.houseOwners,
+        houseStakeMinor: updated.houseStakeMinor,
+        houseSkipped: updated.houseSkipped,
+      };
     } catch (e) {
       if (isUniqueViolation(e)) {
         const taken = await this.prisma.card.findMany({ where: { roundId, cardNo: { in: unique } }, select: { cardNo: true } });
@@ -370,6 +408,74 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     return this.myCards(roomId, userId);
   }
 
+  /**
+   * Each announced automated player takes a random number of cards (1 up to the room's setting, never more than
+   * a real player may hold), at the round's normal stake, paid from the house bankroll. Cards are picked at random
+   * from those still free. A player the bankroll cannot pay for gets fewer cards, or is skipped (and counted);
+   * nothing is ever paid from anywhere else.
+   */
+  private async joinAutomated(tx: Tx, round: Round): Promise<Round> {
+    const stake = round.stakeMinor;
+    const room = await tx.room.findUniqueOrThrow({
+      where: { id: round.roomId },
+      select: { cardPool: true, automatedMaxCards: true, maxCardsPerPlayer: true },
+    });
+    const maxEach = Math.max(1, Math.min(room.automatedMaxCards, room.maxCardsPerPlayer));
+    const bankroll = await this.ledger.systemAccount(AccountType.HOUSE_BANKROLL, tx);
+    const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
+    const balance = (await this.ledger.lockAccounts(tx, [bankroll.id, pot.id])).get(bankroll.id)!.balance_minor;
+    const taken = new Set((await tx.card.findMany({ where: { roundId: round.id }, select: { cardNo: true } })).map((c) => c.cardNo));
+    const free = Array.from({ length: room.cardPool }, (_, i) => i + 1).filter((n) => !taken.has(n));
+    let affordable = stake > 0n ? Number(balance / stake > 100_000n ? 100_000n : balance / stake) : 0;
+    const cards: number[] = [];
+    const owners: number[] = [];
+    let joined = 0;
+    for (let player = 1; player <= round.housePlanned; player++) {
+      const wanted = randomInt(1, maxEach + 1);
+      const count = Math.min(wanted, affordable, free.length);
+      if (count < 1) continue; // skipped: no money or no free cards left
+      joined++;
+      affordable -= count;
+      for (let i = 0; i < count; i++) {
+        cards.push(free.splice(randomInt(free.length), 1)[0]);
+        owners.push(joined);
+      }
+    }
+    const skipped = round.housePlanned - joined;
+    const houseStake = stake * BigInt(cards.length);
+    if (cards.length > 0) {
+      await this.ledger.post(
+        {
+          type: TxType.CARD_PURCHASE,
+          description: `Round #${round.number}: ${joined} automated player${joined > 1 ? 's' : ''}, ${cards.length} card${cards.length > 1 ? 's' : ''} (house bankroll)`,
+          idempotencyKey: `automated-entry:${round.id}`,
+          metadata: { roundId: round.id, automated: true, cards, owners, announced: round.housePlanned, joined, skipped, stakeMinor: stake.toString() },
+          lines: [
+            { accountId: bankroll.id, amountMinor: -houseStake },
+            { accountId: pot.id, amountMinor: houseStake },
+          ],
+        },
+        tx,
+      );
+    }
+    if (skipped > 0) {
+      this.logger.warn(
+        `Round #${round.number} (${round.roomId}): ${skipped} of ${round.housePlanned} automated players skipped; bankroll ${money(balance).birr} birr, stake ${money(stake).birr} birr`,
+      );
+    }
+    return tx.round.update({
+      where: { id: round.id },
+      data: {
+        houseCards: cards,
+        houseOwners: owners,
+        houseStakeMinor: houseStake,
+        houseSkipped: skipped,
+        cardsSold: { increment: cards.length },
+        stakeTotalMinor: { increment: houseStake },
+      },
+    });
+  }
+
   // ─── Round lifecycle ──────────────────────────────────────────────────────
 
   private async resume(room: Room) {
@@ -417,12 +523,21 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         stakeMinor: fresh.stakeMinor,
         houseCutBps: fresh.houseCutBps,
         guaranteedMinor: fresh.guaranteedPrizeMinor,
+        housePlanned: fresh.automatedEnabled && fresh.stakeMinor > 0n && !isManagedRoom(fresh.id) ? fresh.automatedPlayers : 0,
         serverSeed,
         seedHash,
         selectEndsAt: new Date(Date.now() + fresh.selectSeconds * 1000),
       },
     });
-    const l: LiveRoom = { room: fresh, round, order: ballOrder(serverSeed, round.number), cards: new Map(), called: new Set(), busy: false };
+    // Announced automated players buy their cards as soon as the countdown starts.
+    const opened =
+      round.housePlanned > 0
+        ? await this.ledger.withTx(async (tx) => this.joinAutomated(tx, await this.lockRound(tx, round.id))).catch((e: Error) => {
+            this.logger.error(`Room ${fresh.id}: automated players could not join round #${round.number}: ${e.message}`);
+            return round;
+          })
+        : round;
+    const l: LiveRoom = { room: fresh, round: opened, order: ballOrder(serverSeed, round.number), cards: new Map(), called: new Set(), busy: false };
     const previous = this.live.get(fresh.id);
     if (previous) clearTimeout(previous.timer);
     this.live.set(fresh.id, l);
@@ -443,12 +558,15 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         const selectEndsAt = new Date(Date.now() + l.room.selectSeconds * 1000);
         return tx.round.update({ where: { id: roundId }, data: { selectEndsAt } });
       }
+      // Automated players count as players: a round can run with automated players only.
+      const automated = automatedPlayersIn(round);
       const short = houseCash ? !players || !round.houseStakeMinor
-        : !practice && (cards.length < l.room.minCards || players < MIN_PLAYERS);
+        : !practice && (cards.length + round.houseCards.length < l.room.minCards || players + automated < MIN_PLAYERS);
       if (short) {
         await this.refundAll(tx, round, cards);
         await tx.round.update({ where: { id: roundId }, data: { status: RoundStatus.CANCELLED, finishedAt: new Date() } });
-        return cards.length || round.houseStakeMinor > 0n ? ('refunded' as const) : ('empty' as const);
+        if (cards.length || round.houseStakeMinor > 0n) return 'refunded' as const;
+        return round.housePlanned > 0 ? ('announcedEmpty' as const) : ('empty' as const);
       }
       const started = await tx.round.update({ where: { id: roundId }, data: { status: RoundStatus.DRAWING, startedAt: new Date() } });
       return { started, cards };
@@ -467,9 +585,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       this.schedule(l, l.round.selectEndsAt.getTime() - Date.now(), () => this.closeSelection(l));
       return;
     }
-    if (outcome === 'empty') {
-      // Nobody played: quietly start a fresh countdown.
-      await this.prisma.round.delete({ where: { id: roundId } }).catch(() => undefined);
+    if (outcome === 'empty' || outcome === 'announcedEmpty') {
+      // Keep cancelled automated rounds for staff, even if no stakes were placed.
+      if (outcome === 'empty') await this.prisma.round.delete({ where: { id: roundId } }).catch(() => undefined);
       return this.openRound(l.room);
     }
     if (outcome === 'refunded') {
@@ -509,7 +627,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const samples = l.room.id === PRACTICE_ROOM_ID ? SAMPLE_CARDS : l.round.houseCards;
     samples.forEach((cardNo, i) => {
       const [lineIndex] = completeLines(this.cardSet[cardNo - 1], l.called);
-      if (lineIndex !== undefined) winners.push({ cardNo, sampleNo: i + 1, lineIndex });
+      // Several cards can belong to the same automated player: name them by player, not by card.
+      const owner = l.room.id === PRACTICE_ROOM_ID ? i + 1 : (l.round.houseOwners[i] ?? i + 1);
+      if (lineIndex !== undefined) winners.push({ cardNo, sampleNo: owner, lineIndex });
     });
     return winners;
   }
@@ -521,14 +641,18 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const done = await this.ledger.withTx(async (tx) => {
       const round = await this.lockRound(tx, roundId);
       if (round.status !== RoundStatus.DRAWING) return null;
+      // A round with only automated players is the house playing against itself: no house cut and no
+      // guaranteed-prize top-up, so the whole pool goes back to the bankroll and revenue is not inflated.
+      const automatedOnly = !practice && round.houseCards.length > 0 && !winners.some((w) => 'userId' in w) && l.cards.size === 0;
       const s = settle({
         stakeTotalMinor: practice ? 0n : round.stakeTotalMinor,
-        houseCutBps: round.houseCutBps,
-        guaranteedMinor: practice ? 0n : round.guaranteedMinor,
+        houseCutBps: automatedOnly ? 0 : round.houseCutBps,
+        guaranteedMinor: practice || automatedOnly ? 0n : round.guaranteedMinor,
         winners: winners.length,
       });
       const humanWinners = winners.filter((w) => 'userId' in w);
-      const houseWinningCards = houseCash ? winners.filter((w) => 'sampleNo' in w).map((w) => w.cardNo) : [];
+      // Automated players' prizes go back to the house bankroll (paid rooms; practice has no money).
+      const houseWinningCards = practice ? [] : winners.filter((w) => 'sampleNo' in w).map((w) => w.cardNo);
       const housePrizeMinor = BigInt(houseWinningCards.length) * s.prizePerWinnerMinor;
       const perUser = new Map<string, bigint>();
       for (const w of humanWinners) perUser.set(w.userId, (perUser.get(w.userId) ?? 0n) + s.prizePerWinnerMinor);
@@ -581,7 +705,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       winners: winners.map((w) => ({
         cardNo: w.cardNo,
         ...('sampleNo' in w
-          ? { name: `${houseCash ? 'Automated house player' : 'Sample player'} ${w.sampleNo}`, sampleNo: w.sampleNo }
+          ? practice
+            ? { name: `Sample player ${w.sampleNo}`, sampleNo: w.sampleNo }
+            : { name: `Automated player ${w.sampleNo}`, sampleNo: w.sampleNo, automated: true }
           : { name: (done.names.get(w.userId) ?? 'Player').slice(0, 20) }),
         lineIndex: w.lineIndex,
         layout: this.cardSet[w.cardNo - 1],
@@ -687,6 +813,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       housePrizeMinor: r.house_prize_minor,
       houseCards: r.house_cards,
       houseWinningCards: r.house_winning_cards,
+      housePlanned: r.house_planned,
+      houseSkipped: r.house_skipped,
+      houseOwners: r.house_owners,
       createdAt: r.created_at,
     };
   }
