@@ -244,4 +244,18 @@ describe('automated players (integration)', () => {
     await http.post('/api/admin/house-bankroll/funding').set(auth(p.token)).send({ amountBirr: '5', bankReference: 'X-123' }).expect(403);
     expect(await app.get(LedgerService).trialBalance()).toBe(0n);
   });
+
+  it('validates simultaneous room edits against the latest settings', async () => {
+    await db.room.create({
+      data: {
+        id: 'concurrent-edits', name: 'Concurrent edits', isActive: false, cardPool: 400,
+        stakeMinor: 1000n, maxCardsPerPlayer: 4, automatedEnabled: true, automatedPlayers: 60,
+      },
+    });
+    const patch = (data: object) => http.patch('/api/admin/rooms/concurrent-edits').set(auth(staff)).send(data);
+    const results = await Promise.all([patch({ cardPool: 200 }), patch({ automatedMaxCards: 4 })]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 400]);
+    const room = await db.room.findUniqueOrThrow({ where: { id: 'concurrent-edits' } });
+    expect(room.automatedPlayers * room.automatedMaxCards).toBeLessThan(room.cardPool);
+  });
 });

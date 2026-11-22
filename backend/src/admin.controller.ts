@@ -218,32 +218,33 @@ export class AdminController {
   async updateRoom(@CurrentUser() staff: AuthUser, @Param('id') id: string, @Body() body: RoomUpdateDto) {
     if (isManagedRoom(id)) throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'This room is not configurable here.');
     const { guaranteedPrizeBirr, stakeBirr, ...rest } = body;
-    const before = await this.prisma.room.findUnique({ where: { id } });
-    if (!before) throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'No such room.');
     const data = {
       ...rest,
       ...(guaranteedPrizeBirr !== undefined ? { guaranteedPrizeMinor: BigInt(guaranteedPrizeBirr) * 100n } : {}),
       ...(stakeBirr !== undefined ? { stakeMinor: BigInt(stakeBirr) * 100n } : {}),
     };
-    const automatedOn = data.automatedEnabled ?? before.automatedEnabled;
-    const automatedCount = data.automatedPlayers ?? before.automatedPlayers;
-    const pool = data.cardPool ?? before.cardPool;
-    if (automatedOn && automatedCount < 1) {
-      throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_COUNT', 'Set how many automated players join each round (1 or more).');
-    }
-    const maxEach = data.automatedMaxCards ?? before.automatedMaxCards;
-    const perPlayer = data.maxCardsPerPlayer ?? before.maxCardsPerPlayer;
-    if (automatedOn && maxEach > perPlayer) {
-      throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_CARDS', `Automated players cannot take more cards than real players may (${perPlayer}).`);
-    }
-    if (automatedOn && automatedCount * maxEach >= pool) {
-      throw new AppError(
-        HttpStatus.BAD_REQUEST,
-        'AUTOMATED_COUNT',
-        `Automated players could take ${automatedCount * maxEach} cards: keep it under ${pool} so real players always have cards.`,
-      );
-    }
     const r = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM rooms WHERE id = ${id} FOR UPDATE`;
+      const before = await tx.room.findUnique({ where: { id } });
+      if (!before) throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'No such room.');
+      const automatedOn = data.automatedEnabled ?? before.automatedEnabled;
+      const automatedCount = data.automatedPlayers ?? before.automatedPlayers;
+      const pool = data.cardPool ?? before.cardPool;
+      if (automatedOn && automatedCount < 1) {
+        throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_COUNT', 'Set how many automated players join each round (1 or more).');
+      }
+      const maxEach = data.automatedMaxCards ?? before.automatedMaxCards;
+      const perPlayer = data.maxCardsPerPlayer ?? before.maxCardsPerPlayer;
+      if (automatedOn && maxEach > perPlayer) {
+        throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_CARDS', `Automated players cannot take more cards than real players may (${perPlayer}).`);
+      }
+      if (automatedOn && automatedCount * maxEach >= pool) {
+        throw new AppError(
+          HttpStatus.BAD_REQUEST,
+          'AUTOMATED_COUNT',
+          `Automated players could take ${automatedCount * maxEach} cards: keep it under ${pool} so real players always have cards.`,
+        );
+      }
       const updated = await tx.room.update({ where: { id }, data });
       // Every room change is recorded with who made it and what it was before and after.
       // Only fields that were sent; the automated-player fields are always included so their history is clear.
