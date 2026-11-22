@@ -23,6 +23,7 @@ export const envSchema = Joi.object({
   RESULT_SECONDS: Joi.number().integer().min(2).max(60).default(8),
   SEED_ROOMS: Joi.boolean().default(true),
   PRACTICE_ROOM_ENABLED: Joi.boolean().default(false),
+  HOUSE_CASH_ROOM_ENABLED: Joi.boolean().default(false),
 
   DEPOSIT_MIN_BIRR: Joi.number().integer().min(1).default(100),
   WITHDRAW_MIN_BIRR: Joi.number().integer().min(1).default(100),
@@ -61,6 +62,7 @@ export interface AppConfig {
   resultSeconds: number;
   seedRooms: boolean;
   practiceRoomEnabled: boolean;
+  houseCashRoomEnabled: boolean;
   money: {
     depositMinMinor: bigint;
     withdrawMinMinor: bigint;
@@ -103,6 +105,7 @@ export function buildConfig(env: Record<string, any>): AppConfig {
     resultSeconds: env.RESULT_SECONDS,
     seedRooms: env.SEED_ROOMS,
     practiceRoomEnabled: env.PRACTICE_ROOM_ENABLED,
+    houseCashRoomEnabled: env.HOUSE_CASH_ROOM_ENABLED,
     money: {
       depositMinMinor: birr(env.DEPOSIT_MIN_BIRR),
       withdrawMinMinor: birr(env.WITHDRAW_MIN_BIRR),

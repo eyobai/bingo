@@ -8,6 +8,8 @@ interface Summary {
   cardsSold: number;
   stakes: Money;
   prizesPaid: Money;
+  housePlayerStakes: Money;
+  housePlayerPrizes: Money;
   houseRevenue: Money;
   guaranteeTopUps: Money;
   depositsApproved: Money;
@@ -108,8 +110,8 @@ export function Overview({ go }: { go: (page: string) => void }) {
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label="House revenue" value={<Birr m={s.houseRevenue} />} tone="gold" hint={`${s.rounds} rounds · ${s.cardsSold} cards`} />
-            <Stat label="Stakes played" value={<Birr m={s.stakes} />} />
-            <Stat label="Prizes paid" value={<Birr m={s.prizesPaid} />} />
+            <Stat label="Stakes played" value={<Birr m={s.stakes} />} hint={s.housePlayerStakes.minor !== '0' ? `includes ${s.housePlayerStakes.birr} birr from house bankroll` : undefined} />
+            <Stat label="Prizes paid" value={<Birr m={s.prizesPaid} />} hint={s.housePlayerPrizes.minor !== '0' ? `includes ${s.housePlayerPrizes.birr} birr to house bankroll` : undefined} />
             <Stat label="Guarantee top-ups" value={<Birr m={s.guaranteeTopUps} />} hint="paid from promotions" />
             <Stat label="Deposits approved" value={<Birr m={s.depositsApproved} />} hint={`bonuses given: ${s.depositBonuses.birr} birr`} />
             <Stat label="Withdrawals paid" value={<Birr m={s.withdrawalsPaid} />} />

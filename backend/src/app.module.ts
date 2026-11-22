@@ -13,6 +13,7 @@ import { AuthGuard, ErrorFilter } from './common/common';
 import { APP_CONFIG, type AppConfig, buildConfig, envSchema } from './config/config';
 import { HealthController } from './health.controller';
 import { LedgerService } from './ledger/ledger.service';
+import { HouseBankrollService } from './ledger/house-bankroll.service';
 import { NotifyModule } from './notify.service';
 import { PaymentsService } from './payments/payments.service';
 import { PrismaModule } from './prisma.service';
@@ -52,6 +53,7 @@ const config = loadConfig();
     { provide: APP_GUARD, useExisting: AuthGuard },
     { provide: APP_FILTER, useClass: ErrorFilter },
     LedgerService,
+    HouseBankrollService,
     WalletService,
     UsersService,
     PaymentsService,

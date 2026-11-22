@@ -26,7 +26,7 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
   }, [phase]);
 
   if (!state) {
-    return <div className="flex h-64 items-center justify-center text-muted">…</div>;
+    return <div className="flex h-64 items-center justify-center text-muted">{room.closed ? t('roomClosed') : '…'}</div>;
   }
   const { status } = state.round;
   return (
@@ -37,7 +37,16 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
           <p className="text-xs text-muted">{t('practiceNotice', { n: state.room.samplePlayers })}</p>
         </div>
       )}
-      {status === 'SELECTING' && <SelectView {...room} state={state} onNeedMoney={onNeedMoney} toast={toast} />}
+      {state.room.houseCash && (
+        <div className="mx-3 mt-3 rounded-xl border border-gold/60 bg-panel px-3 py-2">
+          <h2 className="font-display text-sm">{t('houseRoom')}</h2>
+          <p className="text-xs text-muted">{t('houseNotice', { n: state.room.samplePlayers })}</p>
+          <p className="mt-1 text-xs text-muted">
+            {state.room.houseCards.map((n, i) => `${t('housePlayer', { n: i + 1 })}: #${n}`).join(' · ')}
+          </p>
+        </div>
+      )}
+      {status === 'SELECTING' && <SelectView key={state.round.id} {...room} state={state} onNeedMoney={onNeedMoney} toast={toast} />}
       {status === 'DRAWING' && <PlayView {...room} state={state} />}
       {status === 'FINISHED' && <ResultView {...room} state={state} />}
       {status === 'CANCELLED' && <CancelledView state={state} now={room.now} hadCards={room.mine.length > 0} />}
@@ -74,6 +83,7 @@ function Countdown({ ms }: { ms: number }) {
 
 function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toast }: RoomHook & { onNeedMoney: () => void; toast: (m: string) => void }) {
   const { t } = useI18n();
+  const [accepted, setAccepted] = useState(false);
   const taken = useMemo(() => new Set(state.round.taken), [state.round.taken]);
   const max = state.room.maxCardsPerPlayer;
   const left = new Date(state.round.selectEndsAt).getTime() - now();
@@ -88,13 +98,14 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
     }
     telegram.tap();
     try {
-      await toggle(n);
+      await toggle(n, state.room.houseCash && accepted);
     } catch (e) {
       telegram.error();
       if (e instanceof ApiError && e.code === 'INSUFFICIENT_FUNDS') {
         toast(t('needMoney'));
         onNeedMoney();
-      } else toast(e instanceof Error ? e.message : String(e));
+      } else if (e instanceof ApiError && e.code === 'HOUSE_ROOM_PAUSED') toast(t('houseRoomPaused'));
+      else toast(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -123,8 +134,8 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
             </>
           )}
           <span className="text-[10px] text-muted">
-            {state.room.practice ? t('realPlayers', { n: state.round.players }) : `${state.round.players} ${t('players')}`} ·{' '}
-            {state.round.cardsSold + (state.room.samplePlayers ?? 0)} {t('cards')}
+            {state.room.practice || state.room.houseCash ? t('realPlayers', { n: state.round.players }) : `${state.round.players} ${t('players')}`} ·{' '}
+            {state.round.cardsSold + (state.room.practice ? state.room.samplePlayers : 0)} {t('cards')}
           </span>
         </div>
         <div className="relative hidden h-20 w-32 shrink-0 min-[400px]:block" aria-hidden>
@@ -133,8 +144,12 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
           ))}
         </div>
         <div className="z-10 flex shrink-0 flex-col items-end gap-0.5 text-right">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted">{t('startingIn')}</span>
-          <Countdown ms={left} />
+          {state.room.entriesPaused ? <span className="text-xs font-bold text-gold">{t('houseRoomPaused')}</span> : (
+            <>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted">{t('startingIn')}</span>
+              <Countdown ms={left} />
+            </>
+          )}
         </div>
       </section>
 
@@ -148,7 +163,13 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
             <span className="text-muted">/{max}</span>
           </span>
         </div>
-        <p className="px-4 pt-2 text-[11px] text-muted">{t('tapToPick')}</p>
+        {state.room.houseCash && !state.room.entriesPaused && (
+          <label className="flex items-start gap-2 px-4 pt-3 text-sm">
+            <input type="checkbox" className="mt-1 accent-gold" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+            {t('acceptHousePlayers')}
+          </label>
+        )}
+        {!state.room.entriesPaused && <p className="px-4 pt-2 text-[11px] text-muted">{t('tapToPick')}</p>}
         <div className="grid grid-cols-10 gap-1 p-2.5">
           {Array.from({ length: state.room.cardPool }, (_, i) => i + 1).map((n) => {
             const isMine = mine.includes(n);
@@ -163,7 +184,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
               <button
                 key={n}
                 type="button"
-                disabled={isTaken || closing}
+                disabled={isTaken || closing || (!isMine && (state.room.entriesPaused || (state.room.houseCash && !accepted)))}
                 onClick={() => void pick(n)}
                 aria-pressed={isMine}
                 aria-label={`Card ${n}${isMine ? ', yours' : isTaken ? ', taken' : ''}`}
@@ -201,7 +222,7 @@ function RoundBar({ state }: { state: RoomState }) {
       </span>
       <span className="flex items-center gap-1.5">
         <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
-          ● {t('live')} · {state.room.practice ? t('realPlayers', { n: state.round.players }) : `${state.round.players} ${t('players')}`}
+          ● {t('live')} · {state.room.practice || state.room.houseCash ? t('realPlayers', { n: state.round.players }) : `${state.round.players} ${t('players')}`}
         </span>
         <SoundButton />
       </span>
@@ -358,7 +379,7 @@ function PlayView({ state, mine, layouts }: RoomHook) {
           <div className="grid grid-cols-2 divide-x divide-line overflow-hidden rounded-xl border border-line bg-panel text-center">
             <div className="px-1 py-1.5">
               <p className="text-[8px] font-bold uppercase tracking-widest text-muted">{t('cards')}</p>
-              <p className="font-display text-sm tabular-nums">{state.round.cardsSold + (state.room.samplePlayers ?? 0)}</p>
+              <p className="font-display text-sm tabular-nums">{state.round.cardsSold + (state.room.practice ? state.room.samplePlayers : 0)}</p>
             </div>
             <div className="px-1 py-1.5">
               <p className="text-[8px] font-bold uppercase tracking-widest text-muted">{t('balls')}</p>
@@ -469,7 +490,7 @@ function ResultView({ state, mine, now }: RoomHook) {
   if (!result) return null;
   const left = new Date(result.nextRoundAt).getTime() - now();
   const won = myWins.length ? (Number(result.prizePerWinner.minor) * myWins.length) / 100 : 0;
-  const winnerName = (w: Winner) => w.sampleNo ? t('samplePlayer', { n: w.sampleNo }) : w.name;
+  const winnerName = (w: Winner) => w.sampleNo ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo }) : w.name;
 
   return (
     <div className="winner-glow flex min-h-[70vh] flex-col items-center gap-4 px-4 py-6">
@@ -477,6 +498,9 @@ function ResultView({ state, mine, now }: RoomHook) {
         <div className="pop w-full rounded-2xl bg-win px-4 py-3 text-center font-display text-lg text-white">
           {state.room.practice ? t('practiceWin') : t('youWon', { amount: won.toLocaleString('en-US') })}
         </div>
+      )}
+      {state.room.houseCash && result.winners.some((w) => w.sampleNo) && (
+        <p className="text-center text-sm text-muted">{t('housePrizeReturned')}</p>
       )}
       {result.winners.length === 1 ? (
         <>
@@ -523,7 +547,7 @@ function ResultView({ state, mine, now }: RoomHook) {
                 <div className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 ${mine.includes(w.cardNo) ? 'border-gold bg-gold/10' : 'border-line bg-panel'}`}>
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gold text-sm font-black text-gold-ink">{winnerName(w).slice(0, 1).toUpperCase()}</span>
                   <span className="min-w-0 leading-tight">
-                    <span className="block truncate text-sm font-bold">{winnerName(w)}</span>
+                    <span className={`block text-sm font-bold ${w.sampleNo && state.room.houseCash ? '' : 'truncate'}`}>{winnerName(w)}</span>
                     <span className="text-[10px] text-gold">
                       {t('ticket')} #{w.cardNo}
                     </span>
