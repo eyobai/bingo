@@ -56,6 +56,7 @@ export interface LobbyRoom {
 export interface LobbyState {
   serverTime: string;
   rooms: LobbyRoom[];
+  retiringRoomId?: string;
 }
 
 export interface RoomState {

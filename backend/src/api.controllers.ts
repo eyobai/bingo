@@ -176,7 +176,8 @@ export class GameController {
   @Get('rooms')
   rooms() {
     // Lobby: every open room with a short live summary.
-    const rooms = this.game.roomIds().filter((id) => id !== HOUSE_CASH_ROOM_ID).flatMap((id) => {
+    const ids = this.game.roomIds();
+    const rooms = ids.filter((id) => id !== HOUSE_CASH_ROOM_ID).flatMap((id) => {
       const s = this.game.publicState(id);
       if (!s) return [];
       const { round, room } = s;
@@ -198,7 +199,11 @@ export class GameController {
         },
       ];
     });
-    return { serverTime: new Date().toISOString(), rooms };
+    return {
+      serverTime: new Date().toISOString(),
+      rooms,
+      ...(ids.includes(HOUSE_CASH_ROOM_ID) ? { retiringRoomId: HOUSE_CASH_ROOM_ID } : {}),
+    };
   }
 
   /** Card layouts 1..pool. They never change, so the app downloads them once. */

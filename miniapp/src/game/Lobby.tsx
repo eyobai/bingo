@@ -20,6 +20,7 @@ const fmt = (birr: string) => Number(birr).toLocaleString('en-US', { maximumFrac
 export function Lobby({ onOpen }: { onOpen: (roomId: string) => void }) {
   const { t } = useI18n();
   const [data, setData] = useState<LobbyState | null>(null);
+  const [joinedRetiringRoom, setJoinedRetiringRoom] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const offset = useRef(0);
   useTick(500);
@@ -45,6 +46,26 @@ export function Lobby({ onOpen }: { onOpen: (roomId: string) => void }) {
     };
   }, []);
 
+  const retiringRoomId = data?.retiringRoomId;
+  useEffect(() => {
+    if (!retiringRoomId) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const { cards } = await api<{ cards: number[] }>(`/rooms/${retiringRoomId}/my-cards`);
+        if (alive) setJoinedRetiringRoom(cards.length ? retiringRoomId : null);
+      } catch {
+        // Retry while the final round is still available.
+      }
+    };
+    void load();
+    const id = setInterval(load, 2500);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [retiringRoomId]);
+
   const now = () => Date.now() + offset.current;
 
   return (
@@ -53,6 +74,12 @@ export function Lobby({ onOpen }: { onOpen: (roomId: string) => void }) {
         <h1 className="font-display text-2xl">{t('games')}</h1>
         <p className="text-xs text-muted">{t('gamesSub')}</p>
       </div>
+      {retiringRoomId && retiringRoomId === joinedRetiringRoom && (
+        <button type="button" onClick={() => onOpen(retiringRoomId)} className="rounded-2xl border border-gold bg-panel px-3 py-2 text-left">
+          <span className="block font-display text-sm">{t('houseRoom')} · {t('yourCards')}</span>
+          <span className="block text-xs text-muted">{t('houseRetired')}</span>
+        </button>
+      )}
       {!data && <p className="py-10 text-center text-sm text-muted">{failed ? t('lobbyOffline') : '…'}</p>}
       {data?.rooms.map((room, i) => (
         <RoomCard key={room.id} room={room} color={room.practice ? '#2dd4bf' : tierColor(Number(room.stake.birr), i)} now={now()} onOpen={() => onOpen(room.id)} />
