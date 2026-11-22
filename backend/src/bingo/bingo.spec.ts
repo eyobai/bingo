@@ -104,11 +104,13 @@ describe('settle', () => {
 describe('automated player names', () => {
   it('has at least 10 names and gives players in one round different names', () => {
     expect(AUTOMATED_NAMES.length).toBeGreaterThanOrEqual(10);
-    const names = Array.from({ length: AUTOMATED_NAMES.length }, (_, i) => automatedName('round-a', i + 1).en);
+    const names = Array.from({ length: AUTOMATED_NAMES.length }, (_, i) => automatedName('round-a', i + 1));
     expect(new Set(names).size).toBe(AUTOMATED_NAMES.length);
     expect(automatedName('round-a', 3)).toEqual(automatedName('round-a', 3)); // stable within a round
-    const other = Array.from({ length: 5 }, (_, i) => automatedName('round-b', i + 1).en);
+    const other = Array.from({ length: 5 }, (_, i) => automatedName('round-b', i + 1));
     expect(other).not.toEqual(names.slice(0, 5)); // shuffled per round
-    expect(automatedName('round-a', AUTOMATED_NAMES.length + 1).en).toMatch(/ 2$/);
+    expect(automatedName('round-a', AUTOMATED_NAMES.length + 1)).toMatch(/ 2$/);
+    expect(new Set(AUTOMATED_NAMES.map((n) => n.toLowerCase())).size).toBe(AUTOMATED_NAMES.length); // no duplicates
+    expect(AUTOMATED_NAMES.every((n) => !n.includes(' '))).toBe(true); // first names only
   });
 });

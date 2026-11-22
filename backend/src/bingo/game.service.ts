@@ -61,8 +61,6 @@ interface LiveWinner {
   sampleNo?: number;
   /** A house-funded automated player in a paid room: its prize goes to the house bankroll. */
   automated?: boolean;
-  /** Automated player's name in Amharic script (`name` is in Latin letters). */
-  nameAm?: string;
   lineIndex: number;
   layout: CardLayout;
 }
@@ -710,10 +708,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         ...('sampleNo' in w
           ? practice
             ? { name: `Sample player ${w.sampleNo}`, sampleNo: w.sampleNo }
-            : (() => {
-                const n = automatedName(l.round.id, w.sampleNo);
-                return { name: n.en, nameAm: n.am, sampleNo: w.sampleNo, automated: true };
-              })()
+            : { name: automatedName(l.round.id, w.sampleNo), sampleNo: w.sampleNo, automated: true }
           : { name: (done.names.get(w.userId) ?? 'Player').slice(0, 20) }),
         lineIndex: w.lineIndex,
         layout: this.cardSet[w.cardNo - 1],

@@ -31,8 +31,6 @@ export interface Winner {
   layout: number[];
   /** A house-funded automated player; its prize goes to the house bankroll. */
   automated?: boolean;
-  /** Automated player's name in Amharic script. */
-  nameAm?: string;
 }
 
 /** One room in the lobby (GET /rooms). */

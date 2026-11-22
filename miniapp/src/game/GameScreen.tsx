@@ -494,7 +494,7 @@ function VerticalBoard({ calls }: { calls: number[] }) {
 }
 
 function ResultView({ state, mine, now }: RoomHook) {
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const result = state.result;
   const myWins = result?.winners.filter((w) => mine.includes(w.cardNo)) ?? [];
   const called = useMemo(() => new Set(state.round.calls), [state.round.calls]);
@@ -506,7 +506,7 @@ function ResultView({ state, mine, now }: RoomHook) {
   const won = myWins.length ? (Number(result.prizePerWinner.minor) * myWins.length) / 100 : 0;
   const winnerName = (w: Winner) =>
     // Automated players have names but are always labelled as automated.
-    w.automated ? t('automatedPlayer', { name: lang === 'am' && w.nameAm ? w.nameAm : w.name }) : w.sampleNo ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo }) : w.name;
+    w.automated ? t('automatedPlayer', { name: w.name }) : w.sampleNo ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo }) : w.name;
 
   return (
     <div className="winner-glow flex min-h-[70vh] flex-col items-center gap-4 px-4 py-6">
