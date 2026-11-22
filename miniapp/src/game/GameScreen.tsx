@@ -95,12 +95,13 @@ function AutomatedNotice({ n, stake, bare }: { n: number; stake: string; bare?: 
 /** "12 players · 50 🤖" (automated players are always counted separately). */
 function PlayerCount({ state }: { state: RoomState }) {
   const { t } = useI18n();
-  const humans = state.room.practice || state.room.houseCash ? t('realPlayers', { n: state.round.players }) : `${state.round.players} ${t('players')}`;
   const bots = state.round.automated ?? 0;
+  if (state.room.practice || state.room.houseCash) return <>{t('realPlayers', { n: state.round.players })}</>;
+  // Automated players count as players and are always labelled: "7 players (7 🤖)".
   return (
     <>
-      {humans}
-      {bots > 0 && <> · {t('automatedCount', { n: bots })}</>}
+      {state.round.players + bots} {t('players')}
+      {bots > 0 && <> ({t('automatedCount', { n: bots })})</>}
     </>
   );
 }

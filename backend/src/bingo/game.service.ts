@@ -329,7 +329,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
           where: { id: roundId },
           data: { cardsSold: { increment: rows.length }, stakeTotalMinor: { increment: total } },
         });
-        // The first real player's purchase brings in the announced automated players.
+        // Normally automated players join when the countdown starts; if that failed, they join now.
         if (!practice && afterHuman.housePlanned > 0 && !afterHuman.houseCards.length && !afterHuman.houseSkipped) {
           return this.joinAutomated(tx, afterHuman);
         }
@@ -502,7 +502,15 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         selectEndsAt: new Date(Date.now() + fresh.selectSeconds * 1000),
       },
     });
-    const l: LiveRoom = { room: fresh, round, order: ballOrder(serverSeed, round.number), cards: new Map(), called: new Set(), busy: false };
+    // Announced automated players buy their cards as soon as the countdown starts.
+    const opened =
+      round.housePlanned > 0
+        ? await this.ledger.withTx(async (tx) => this.joinAutomated(tx, await this.lockRound(tx, round.id))).catch((e: Error) => {
+            this.logger.error(`Room ${fresh.id}: automated players could not join round #${round.number}: ${e.message}`);
+            return round;
+          })
+        : round;
+    const l: LiveRoom = { room: fresh, round: opened, order: ballOrder(serverSeed, round.number), cards: new Map(), called: new Set(), busy: false };
     const previous = this.live.get(fresh.id);
     if (previous) clearTimeout(previous.timer);
     this.live.set(fresh.id, l);
@@ -523,10 +531,10 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         const selectEndsAt = new Date(Date.now() + l.room.selectSeconds * 1000);
         return tx.round.update({ where: { id: roundId }, data: { selectEndsAt } });
       }
-      // Automated players count toward the minimum, but a round never runs without a real player.
+      // Automated players count as players: a round can run with automated players only.
       const automated = round.houseCards.length;
       const short = houseCash ? !players || !round.houseStakeMinor
-        : !practice && (!players || cards.length + automated < l.room.minCards || players + automated < MIN_PLAYERS);
+        : !practice && (cards.length + automated < l.room.minCards || players + automated < MIN_PLAYERS);
       if (short) {
         await this.refundAll(tx, round, cards);
         await tx.round.update({ where: { id: roundId }, data: { status: RoundStatus.CANCELLED, finishedAt: new Date() } });
@@ -603,10 +611,13 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const done = await this.ledger.withTx(async (tx) => {
       const round = await this.lockRound(tx, roundId);
       if (round.status !== RoundStatus.DRAWING) return null;
+      // A round with only automated players is the house playing against itself: no house cut and no
+      // guaranteed-prize top-up, so the whole pool goes back to the bankroll and revenue is not inflated.
+      const automatedOnly = !practice && round.houseCards.length > 0 && !winners.some((w) => 'userId' in w) && l.cards.size === 0;
       const s = settle({
         stakeTotalMinor: practice ? 0n : round.stakeTotalMinor,
-        houseCutBps: round.houseCutBps,
-        guaranteedMinor: practice ? 0n : round.guaranteedMinor,
+        houseCutBps: automatedOnly ? 0 : round.houseCutBps,
+        guaranteedMinor: practice || automatedOnly ? 0n : round.guaranteedMinor,
         winners: winners.length,
       });
       const humanWinners = winners.filter((w) => 'userId' in w);

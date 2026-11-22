@@ -292,12 +292,8 @@ export class PaymentsController {
   }
 }
 
-/**
- * Real players still needed for the round to start. At least one real player is always needed; announced
- * automated players join with the first real player's purchase and count toward the minimum.
- */
-function needPlayers(practice: boolean, humans: number, automatedJoined: number, automatedAnnounced: number) {
+/** Players still needed for the round to start. Automated players who joined count as players. */
+function needPlayers(practice: boolean, humans: number, automatedJoined: number, _automatedAnnounced: number) {
   if (practice) return Math.max(0, 1 - humans);
-  if (!humans) return automatedAnnounced > 0 ? 1 : MIN_PLAYERS;
   return Math.max(0, MIN_PLAYERS - humans - automatedJoined);
 }

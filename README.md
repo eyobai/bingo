@@ -202,11 +202,12 @@ players competing for real cash. In **Admin → Settings**:
 
 How it works:
 
-- **Disclosure before purchase.** The lobby shows "🤖 N automated" for the room, and the room shows a notice.
+- **Disclosure before purchase.** Automated players are counted as players and always labelled
+  ("7 waiting (7 🤖)" in the lobby, "12 players (7 🤖)" in the room), and the room shows a notice.
   Before a player's first card the Mini App asks them to confirm; the server refuses a purchase without that
   confirmation (`AUTOMATED_TERMS_REQUIRED`) and records it on the purchase.
-- **Same stake, same pool, same chance.** With the first real player's card, each announced automated player
-  buys one random free card at the room's normal price, paid from the house bankroll. Every paid card is in the
+- **Same stake, same pool, same chance.** When each countdown starts, each announced automated player buys one
+  random free card at the room's normal price, paid from the house bankroll. Every paid card is in the
   one prize pool and is checked against the same balls. Example: 50 automated + 10 real players at 10 ETB = a
   600 ETB pool; with a 20% house cut a sole real winner gets 480 ETB.
 - **Prizes and refunds go back to their source.** Real winners are paid to their wallets, automated winners to
@@ -214,8 +215,11 @@ How it works:
   automated stakes to the bankroll.
 - **Short bankroll.** Entries the bankroll cannot pay for are skipped (never paid from anywhere else); rounds
   show "N skipped (bankroll)" in **Admin → Rounds**.
-- **A real player is always needed.** Automated players count toward the 2-player minimum, but a round with no
-  real player's card is cancelled and refunded.
+- **Rounds run even without real players.** Automated players count toward the 2-player minimum and minimum
+  cards, so a room with automated players keeps playing. A round with only automated players takes no house cut
+  and no guaranteed-prize top-up: the whole pool returns to the bankroll (apart from a few santim of rounding
+  when the split is uneven), so house revenue is never inflated by the house playing itself. Each such round
+  still adds ledger entries (stakes in, prize back).
 - **Audit trail.** Every room change (before → after, who, when) and every bankroll movement is listed at the
   bottom of **Admin → Settings**. Rounds store the announced, joined and skipped automated entries, their cards,
   stakes and prizes; the ledger has a separate posting for the automated entries of each round.

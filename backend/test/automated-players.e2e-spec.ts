@@ -57,12 +57,14 @@ describe('automated players (integration)', () => {
     await db.$executeRawUnsafe('CREATE SCHEMA public');
     execSync('npx prisma migrate deploy', { env: process.env, stdio: 'ignore' });
     const room = { stakeMinor: 1000n, cardPool: 400, callIntervalMs: 30, houseCutBps: 2000 };
+    // All start switched off; each test switches on only its own room, so the shared bankroll is predictable.
     await db.room.createMany({
       data: [
         { id: 'plain', name: 'Plain', ...room, selectSeconds: 60, sortOrder: 0 },
-        { id: 'short', name: 'Short', ...room, selectSeconds: 6, automatedEnabled: true, automatedPlayers: 5, sortOrder: 1 },
-        { id: 'full', name: 'Full', ...room, selectSeconds: 12, automatedEnabled: true, automatedPlayers: 50, sortOrder: 2 },
-        { id: 'refund', name: 'Refund', ...room, selectSeconds: 5, automatedEnabled: true, automatedPlayers: 3, sortOrder: 3 },
+        { id: 'short', name: 'Short', ...room, selectSeconds: 6, sortOrder: 1 },
+        { id: 'full', name: 'Full', ...room, selectSeconds: 12, sortOrder: 2 },
+        { id: 'solo', name: 'Solo', ...room, selectSeconds: 4, sortOrder: 3 },
+        { id: 'refund', name: 'Refund', ...room, selectSeconds: 5, minCards: 10, sortOrder: 4 },
       ],
     });
     const config = loadConfig();
@@ -82,36 +84,45 @@ describe('automated players (integration)', () => {
     await db.$disconnect();
   });
 
-  it('is off by default and announced before purchase where enabled', async () => {
+  const enable = (room: string, n: number) =>
+    http.patch(`/api/admin/rooms/${room}`).set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: n }).expect(200);
+  const disable = (room: string) => http.patch(`/api/admin/rooms/${room}`).set(auth(staff)).send({ automatedEnabled: false }).expect(200);
+  /** The first countdown that uses the room's automated-player setting, with time left to act in. */
+  const automatedRound = (room: string, n: number, msLeft: number) =>
+    until(room, (s) => s.room.automatedPlayers === n && s.round.status === 'SELECTING' && Date.parse(s.round.selectEndsAt) - Date.now() > msLeft);
+
+  it('is off by default', async () => {
     expect((await state('plain')).room.automatedPlayers).toBe(0);
     const lobby = (await http.get('/api/rooms').expect(200)).body.rooms;
-    expect(lobby.find((r: any) => r.id === 'plain')).toMatchObject({ automatedPlayers: 0, round: { needPlayers: 2 } });
-    expect(lobby.find((r: any) => r.id === 'full')).toMatchObject({ automatedPlayers: 50, round: { needPlayers: 1, automated: 0 } });
+    expect(lobby.find((r: any) => r.id === 'plain')).toMatchObject({ automatedPlayers: 0, round: { needPlayers: 2, automated: 0 } });
   });
 
-  it('skips entries the bankroll cannot pay for, and requires the disclosure to be accepted', async () => {
+  it('joins at the countdown start, skips what the bankroll cannot pay, and requires the disclosure', async () => {
     await fund(25, 'TEST-FUND-1'); // pays for 2 of the 5 announced 10-birr entries
     await fund(25, 'TEST-FUND-1'); // the same transfer recorded twice counts once
     await http.post('/api/admin/house-bankroll/funding').set(auth(staff)).send({ amountBirr: '30', bankReference: 'TEST-FUND-1' }).expect(409);
     expect(await bankroll()).toBe(2500n);
 
-    const a = await player(1);
-    await freshRound('short', 3000);
-    const refused = await buy('short', a.token, [1], false).expect(400);
-    expect(refused.body.code).toBe('AUTOMATED_TERMS_REQUIRED');
-    await buy('short', a.token, [1]).expect(200);
-    const s = await state('short');
-    expect(s.round).toMatchObject({ players: 1, automated: 2, cardsSold: 3, prize: { minor: String((3000 * 8) / 10) } });
-    expect(s.round.automatedCards).toHaveLength(2);
-    expect(s.round.taken).toEqual(expect.arrayContaining([1, ...s.round.automatedCards]));
+    await enable('short', 5);
+    const open = await automatedRound('short', 5, 3000);
+    await disable('short'); // only this round uses automated players
+    // Before any real player: the automated players are already in, counted and labelled.
+    expect(open.round).toMatchObject({ players: 0, automated: 2, cardsSold: 2 });
+    const lobby = (await http.get('/api/rooms').expect(200)).body.rooms;
+    expect(lobby.find((r: any) => r.id === 'short').round).toMatchObject({ automated: 2, needPlayers: 0 });
     expect(await bankroll()).toBe(500n);
-    const round = await db.round.findFirstOrThrow({ where: { roomId: 'short', number: s.round.number } });
-    expect(round).toMatchObject({ housePlanned: 5, houseSkipped: 3, houseStakeMinor: 2000n, stakeTotalMinor: 3000n });
-    // A real player cannot take an automated player's card.
-    const b = await player(2);
-    await buy('short', b.token, [s.round.automatedCards[0]]).expect(409);
+    const round = await db.round.findFirstOrThrow({ where: { roomId: 'short', number: open.round.number } });
+    expect(round).toMatchObject({ housePlanned: 5, houseSkipped: 3, houseStakeMinor: 2000n, stakeTotalMinor: 2000n });
 
-    // One real player plus automated players is enough to play; the round settles to the right owners.
+    const a = await player(1);
+    const card = Array.from({ length: 400 }, (_, i) => i + 1).find((n) => !open.round.taken.includes(n))!;
+    const refused = await buy('short', a.token, [card], false).expect(400);
+    expect(refused.body.code).toBe('AUTOMATED_TERMS_REQUIRED');
+    await buy('short', a.token, [card]).expect(200);
+    await buy('short', a.token, [open.round.automatedCards[0]]).expect(409); // an automated player's card
+    const s = await state('short');
+    expect(s.round).toMatchObject({ players: 1, automated: 2, cardsSold: 3, prize: { minor: '2400' } });
+
     const done = await until('short', (x) => x.round.number === s.round.number && x.round.status === 'FINISHED');
     const settled = await db.round.findUniqueOrThrow({ where: { id: round.id }, include: { winners: true } });
     const perWinner = settled.prizePerWinnerMinor;
@@ -125,28 +136,25 @@ describe('automated players (integration)', () => {
 
   it('puts every paid card in one pool: 50 automated + 10 real players at 10 birr is a 600 birr pool', async () => {
     await fund(1000, 'TEST-FUND-2');
-    const before = await bankroll();
     const players = await Promise.all(Array.from({ length: 10 }, (_, i) => player(10 + i)));
-    const ready = await freshRound('full', 6000);
-    for (const p of players) {
-      // Automated players take random cards with the first purchase, so pick one that is still free.
-      const taken = new Set<number>((await state('full')).round.taken);
-      const free = Array.from({ length: 400 }, (_, i) => i + 1).find((n) => !taken.has(n))!;
-      await buy('full', p.token, [free]).expect(200);
-    }
+    await enable('full', 50);
+    const ready = await automatedRound('full', 50, 6000);
+    await disable('full');
+    expect(ready.round).toMatchObject({ players: 0, automated: 50 });
+    const afterJoin = await bankroll();
+    const free = Array.from({ length: 400 }, (_, i) => i + 1).filter((n) => !ready.round.taken.includes(n));
+    for (const [i, p] of players.entries()) await buy('full', p.token, [free[i]]).expect(200);
     const s = await state('full');
     expect(s.round).toMatchObject({ players: 10, automated: 50, cardsSold: 60, prize: { minor: '48000' } }); // 600 - 20%
-    expect(await bankroll()).toBe(before - 50_000n);
 
     await until('full', (x) => x.round.number === ready.round.number && x.round.status === 'FINISHED');
     const r = await db.round.findFirstOrThrow({ where: { roomId: 'full', number: ready.round.number }, include: { winners: true } });
     expect(r).toMatchObject({ stakeTotalMinor: 60_000n, houseStakeMinor: 50_000n, houseCutMinor: 60_000n - r.prizeMinor });
-    const humanWinners = r.winners.length;
-    const houseWinners = r.houseWinningCards.length;
-    expect(humanWinners + houseWinners).toBeGreaterThan(0);
+    const winners = r.winners.length + r.houseWinningCards.length;
+    expect(winners).toBeGreaterThan(0);
     // Same split for every winning card, whoever owns it; a sole real winner would get the full 480.
-    expect(r.prizePerWinnerMinor).toBe(48_000n / BigInt(humanWinners + houseWinners));
-    expect(await bankroll()).toBe(before - 50_000n + r.housePrizeMinor);
+    expect(r.prizePerWinnerMinor).toBe(48_000n / BigInt(winners));
+    expect(await bankroll()).toBe(afterJoin + r.housePrizeMinor);
     for (const w of r.winners) expect(w.prizeMinor).toBe(r.prizePerWinnerMinor);
     expect(await app.get(LedgerService).trialBalance()).toBe(0n);
 
@@ -156,17 +164,33 @@ describe('automated players (integration)', () => {
     expect(rounds.find((x: any) => x.number === ready.round.number)).toMatchObject({ automatedAnnounced: 50, automatedCards: 50, automatedSkipped: 0 });
   });
 
+  it('plays with automated players only, with no house cut, so the bankroll gets its whole pool back', async () => {
+    const revenue = () => db.ledgerAccount.findUnique({ where: { code: 'SYSTEM:HOUSE_REVENUE' } }).then((a) => a?.balanceMinor ?? 0n);
+    await enable('solo', 3);
+    const open = await automatedRound('solo', 3, 1000);
+    await disable('solo');
+    const [bankBefore, revenueBefore] = [(await bankroll()) + 3000n, await revenue()];
+    const done = await until('solo', (x) => x.round.number === open.round.number && x.round.status === 'FINISHED');
+    expect(done.round).toMatchObject({ players: 0, automated: 3 });
+    expect(done.result.winners.every((w: any) => w.automated)).toBe(true);
+    const r = await db.round.findFirstOrThrow({ where: { roomId: 'solo', number: open.round.number } });
+    expect(r).toMatchObject({ houseCutMinor: 0n, topUpMinor: 0n, prizeMinor: 3000n - (3000n % BigInt(r.houseWinningCards.length)) });
+    expect(await bankroll()).toBe(bankBefore - (3000n - r.housePrizeMinor));
+    expect(await revenue()).toBe(revenueBefore + (3000n - r.housePrizeMinor)); // only the split's rounding remainder
+    expect(await app.get(LedgerService).trialBalance()).toBe(0n);
+  });
+
   it('refunds every stake to its source when the round is cancelled', async () => {
-    const before = await bankroll();
     const p = await player(40);
-    const ready = await freshRound('refund', 2500);
-    await buy('refund', p.token, [7]).expect(200);
-    expect((await state('refund')).round.automated).toBe(3);
-    expect(await bankroll()).toBe(before - 3000n);
-    // The only real player leaves: the round cannot run on automated players alone.
-    await http.delete('/api/rooms/refund/cards/7').set(auth(p.token)).expect(200);
+    await enable('refund', 3);
+    const ready = await automatedRound('refund', 3, 2500);
+    await disable('refund');
+    const afterJoin = await bankroll();
+    const card = Array.from({ length: 400 }, (_, i) => i + 1).find((n) => !ready.round.taken.includes(n))!;
+    await buy('refund', p.token, [card]).expect(200);
+    // 4 cards is under this room's minimum of 10: cancelled and refunded.
     await until('refund', (x) => x.round.number === ready.round.number && x.round.status === 'CANCELLED', 15_000);
-    expect(await bankroll()).toBe(before);
+    expect(await bankroll()).toBe(afterJoin + 3000n);
     expect(await mainBalance(p.user.id)).toBe(10_000n);
     expect(await app.get(LedgerService).trialBalance()).toBe(0n);
   });
@@ -174,8 +198,8 @@ describe('automated players (integration)', () => {
   it('lets staff control it per room and records every change and bankroll movement', async () => {
     await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true }).expect(400); // needs a count
     await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: 400 }).expect(400);
-    await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: 20 }).expect(200);
-    await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: false }).expect(200);
+    await enable('plain', 20);
+    await disable('plain');
     const bank = (await http.get('/api/admin/house-bankroll').set(auth(staff)).expect(200)).body;
     await http
       .post('/api/admin/house-bankroll/withdrawal')
