@@ -14,6 +14,7 @@ interface RoundRow {
   houseWinningCards: number[];
   automatedAnnounced: number;
   automatedCards: number;
+  automatedPlayers: number;
   automatedSkipped: number;
   houseCut: Money;
   topUp: Money;
@@ -56,7 +57,7 @@ export function Rounds() {
                   {r.cardsSold}
                   {r.automatedAnnounced > 0 && (
                     <span className="block text-[11px] text-muted">
-                      {r.automatedCards} automated{r.automatedSkipped > 0 && <span className="text-bad"> · {r.automatedSkipped} skipped (bankroll)</span>}
+                      {r.automatedPlayers} automated · {r.automatedCards} cards{r.automatedSkipped > 0 && <span className="text-bad"> · {r.automatedSkipped} skipped (bankroll)</span>}
                     </span>
                   )}
                 </td>
@@ -100,6 +101,7 @@ interface Room {
   isActive: boolean;
   automatedEnabled: boolean;
   automatedPlayers: number;
+  automatedMaxCards: number;
 }
 
 export function Settings() {
@@ -251,6 +253,7 @@ function RoomForm({ room, onSaved }: { room: Room; onSaved: () => void }) {
     isActive: room.isActive,
     automatedEnabled: room.automatedEnabled,
     automatedPlayers: room.automatedPlayers,
+    automatedMaxCards: room.automatedMaxCards,
   });
   const [f, setF] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -279,6 +282,7 @@ function RoomForm({ room, onSaved }: { room: Room; onSaved: () => void }) {
           isActive: f.isActive,
           automatedEnabled: f.automatedEnabled,
           automatedPlayers: f.automatedPlayers,
+          automatedMaxCards: f.automatedMaxCards,
         },
       });
       toast(`Saved. ${room.name} uses the new settings from its next round.`);
@@ -350,7 +354,18 @@ function RoomForm({ room, onSaved }: { room: Room; onSaved: () => void }) {
             />
             Automated players join each round (only where your licence allows it)
           </label>
-          {f.automatedEnabled && num('automatedPlayers', 'Automated players per round', `Each buys one card at ${f.stakeBirr} birr from the house bankroll (${f.automatedPlayers * f.stakeBirr} birr per round). They join with the first real player's card.`, 1, Math.min(500, f.cardPool - 1))}
+          {f.automatedEnabled && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {num('automatedPlayers', 'Automated players per round', 'They join when each countdown starts.', 1, Math.min(500, f.cardPool - 1))}
+              {num(
+                'automatedMaxCards',
+                'Most cards per automated player',
+                `Each takes 1 to ${f.automatedMaxCards} cards at random (up to ${f.automatedPlayers * f.automatedMaxCards * f.stakeBirr} birr per round from the bankroll). At most ${f.maxCardsPerPlayer}, like real players.`,
+                1,
+                f.maxCardsPerPlayer,
+              )}
+            </div>
+          )}
           <span className="text-xs text-muted">
             Players see this before buying and must confirm it. Automated cards are in the same prize pool with the same chance to win; their prizes go to the bankroll.
             Off by default. Every change is recorded in the audit trail.

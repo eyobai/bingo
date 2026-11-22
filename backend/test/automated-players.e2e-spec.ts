@@ -84,8 +84,8 @@ describe('automated players (integration)', () => {
     await db.$disconnect();
   });
 
-  const enable = (room: string, n: number) =>
-    http.patch(`/api/admin/rooms/${room}`).set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: n }).expect(200);
+  const enable = (room: string, n: number, maxCards = 1) =>
+    http.patch(`/api/admin/rooms/${room}`).set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: n, automatedMaxCards: maxCards }).expect(200);
   const disable = (room: string) => http.patch(`/api/admin/rooms/${room}`).set(auth(staff)).send({ automatedEnabled: false }).expect(200);
   /** The first countdown that uses the room's automated-player setting, with time left to act in. */
   const automatedRound = (room: string, n: number, msLeft: number) =>
@@ -164,19 +164,32 @@ describe('automated players (integration)', () => {
     expect(rounds.find((x: any) => x.number === ready.round.number)).toMatchObject({ automatedAnnounced: 50, automatedCards: 50, automatedSkipped: 0 });
   });
 
-  it('plays with automated players only, with no house cut, so the bankroll gets its whole pool back', async () => {
+  it('plays with automated players only (several cards each), with no house cut, so the bankroll gets its pool back', async () => {
     const revenue = () => db.ledgerAccount.findUnique({ where: { code: 'SYSTEM:HOUSE_REVENUE' } }).then((a) => a?.balanceMinor ?? 0n);
-    await enable('solo', 3);
+    await enable('solo', 3, 3);
     const open = await automatedRound('solo', 3, 1000);
     await disable('solo');
-    const [bankBefore, revenueBefore] = [(await bankroll()) + 3000n, await revenue()];
+    // 3 automated players, each with 1 to 3 random cards at the normal stake.
+    const round = await db.round.findFirstOrThrow({ where: { roomId: 'solo', number: open.round.number } });
+    expect(new Set(round.houseOwners).size).toBe(3);
+    for (const owner of [1, 2, 3]) {
+      const held = round.houseOwners.filter((o) => o === owner).length;
+      expect(held).toBeGreaterThanOrEqual(1);
+      expect(held).toBeLessThanOrEqual(3);
+    }
+    const cards = round.houseCards.length;
+    const pool = 1000n * BigInt(cards);
+    expect(round.houseStakeMinor).toBe(pool);
+    expect(open.round).toMatchObject({ players: 0, automated: 3, cardsSold: cards });
+    expect(open.room.automatedMaxCards).toBe(3);
+    const [bankBefore, revenueBefore] = [(await bankroll()) + pool, await revenue()];
+
     const done = await until('solo', (x) => x.round.number === open.round.number && x.round.status === 'FINISHED');
-    expect(done.round).toMatchObject({ players: 0, automated: 3 });
-    expect(done.result.winners.every((w: any) => w.automated)).toBe(true);
+    expect(done.result.winners.every((w: any) => w.automated && w.sampleNo >= 1 && w.sampleNo <= 3)).toBe(true);
     const r = await db.round.findFirstOrThrow({ where: { roomId: 'solo', number: open.round.number } });
-    expect(r).toMatchObject({ houseCutMinor: 0n, topUpMinor: 0n, prizeMinor: 3000n - (3000n % BigInt(r.houseWinningCards.length)) });
-    expect(await bankroll()).toBe(bankBefore - (3000n - r.housePrizeMinor));
-    expect(await revenue()).toBe(revenueBefore + (3000n - r.housePrizeMinor)); // only the split's rounding remainder
+    expect(r).toMatchObject({ houseCutMinor: pool - r.prizeMinor, topUpMinor: 0n, prizeMinor: pool - (pool % BigInt(r.houseWinningCards.length)) });
+    expect(await bankroll()).toBe(bankBefore - (pool - r.housePrizeMinor));
+    expect(await revenue()).toBe(revenueBefore + (pool - r.housePrizeMinor)); // only the split's rounding remainder
     expect(await app.get(LedgerService).trialBalance()).toBe(0n);
   });
 
@@ -198,6 +211,9 @@ describe('automated players (integration)', () => {
   it('lets staff control it per room and records every change and bankroll movement', async () => {
     await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true }).expect(400); // needs a count
     await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: 400 }).expect(400);
+    // Never more cards than a real player may hold (4 here), and always cards left for real players.
+    await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: 5, automatedMaxCards: 5 }).expect(400);
+    await http.patch('/api/admin/rooms/plain').set(auth(staff)).send({ automatedEnabled: true, automatedPlayers: 100, automatedMaxCards: 4 }).expect(400);
     await enable('plain', 20);
     await disable('plain');
     const bank = (await http.get('/api/admin/house-bankroll').set(auth(staff)).expect(200)).body;

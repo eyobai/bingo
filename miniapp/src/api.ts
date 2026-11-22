@@ -75,6 +75,7 @@ export interface RoomState {
     houseCards: number[];
     samplePlayers: number;
     automatedPlayers: number;
+    automatedMaxCards: number;
     stake: Money;
     cardPool: number;
     maxCardsPerPlayer: number;

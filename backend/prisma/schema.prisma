@@ -226,6 +226,8 @@ model Room {
   automatedEnabled     Boolean  @default(false) @map("automated_enabled")
   /// How many automated players join each round (one card each) when enabled.
   automatedPlayers     Int      @default(0) @map("automated_players")
+  /// Each automated player takes a random number of cards from 1 up to this (never above maxCardsPerPlayer).
+  automatedMaxCards    Int      @default(1) @map("automated_max_cards")
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -272,6 +274,8 @@ model Round {
   housePlanned        Int      @default(0) @map("house_planned")
   /// Announced automated entries that did not join because the house bankroll could not pay their stake.
   houseSkipped        Int      @default(0) @map("house_skipped")
+  /// Which automated player (1, 2, …) holds each card in houseCards, in the same order.
+  houseOwners         Int[]    @default([]) @map("house_owners")
   createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   room    Room     @relation(fields: [roomId], references: [id])

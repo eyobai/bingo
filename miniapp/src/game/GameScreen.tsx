@@ -82,12 +82,12 @@ function Countdown({ ms }: { ms: number }) {
 }
 
 /** Disclosure shown before purchase in rooms with house-funded automated players. */
-function AutomatedNotice({ n, stake, bare }: { n: number; stake: string; bare?: boolean }) {
+function AutomatedNotice({ n, stake, cards, bare }: { n: number; stake: string; cards: number; bare?: boolean }) {
   const { t } = useI18n();
   return (
     <section role="note" className={bare ? '' : 'rounded-2xl border border-sky-400/50 bg-sky-400/10 px-3 py-2.5'}>
       <h2 className="text-sm font-black">{t('automatedTitle')}</h2>
-      <p className="mt-1 text-xs leading-relaxed text-muted">{t('automatedBody', { n, stake })}</p>
+      <p className="mt-1 text-xs leading-relaxed text-muted">{t('automatedBody', { n, stake, cards })}</p>
     </section>
   );
 }
@@ -112,7 +112,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
   const automatedCards = useMemo(() => new Set(state.round.automatedCards ?? []), [state.round.automatedCards]);
   const automated = state.room.automatedPlayers ?? 0;
   // Players must confirm the automated-player disclosure before their first card in such a room.
-  const ackKey = `automated-ok:${state.room.id}:${automated}`;
+  const ackKey = `automated-ok:${state.room.id}:${automated}:${state.room.automatedMaxCards ?? 1}`;
   const [accepted, setAccepted] = useState(() => {
     try {
       return localStorage.getItem(ackKey) === '1';
@@ -177,11 +177,11 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
 
   return (
     <div className="flex flex-col gap-3 px-3 pb-4 pt-3">
-      {automated > 0 && <AutomatedNotice n={automated} stake={state.room.stake.birr} />}
+      {automated > 0 && <AutomatedNotice n={automated} stake={state.room.stake.birr} cards={state.room.automatedMaxCards ?? 1} />}
       {asking !== null && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center">
           <div className="pop w-full max-w-[460px] rounded-2xl border border-line bg-panel p-4 shadow-2xl">
-            <AutomatedNotice n={automated} stake={state.room.stake.birr} bare />
+            <AutomatedNotice n={automated} stake={state.room.stake.birr} cards={state.room.automatedMaxCards ?? 1} bare />
             <div className="mt-4 flex gap-2">
               <button type="button" onClick={() => setAsking(null)} className="flex-1 rounded-xl border border-line py-3 text-sm font-bold text-muted">
                 {t('automatedCancel')}

@@ -9,7 +9,7 @@ import { IsDateString } from 'class-validator';
 import { AccountType, DepositStatus, Prisma, TxType, WithdrawalStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Max, Min } from 'class-validator';
-import { GameService, HOUSE_CASH_ROOM_ID, MAX_CARD_POOL, PRACTICE_ROOM_ID, isManagedRoom } from './bingo/game.service';
+import { GameService, HOUSE_CASH_ROOM_ID, automatedPlayersIn, MAX_CARD_POOL, PRACTICE_ROOM_ID, isManagedRoom } from './bingo/game.service';
 import { AdminOnly, AppError, CurrentUser, Public, money, type AuthUser } from './common/common';
 import { LedgerService } from './ledger/ledger.service';
 import { HouseBankrollService } from './ledger/house-bankroll.service';
@@ -74,6 +74,7 @@ class RoomUpdateDto {
   /** House-funded automated players (licensed operators only). */
   @IsOptional() @IsBoolean() automatedEnabled?: boolean;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(500) automatedPlayers?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10) automatedMaxCards?: number;
 }
 class BankrollMoveDto {
   @Matches(/^[1-9]\d{0,6}$/) amountBirr!: string;
@@ -230,20 +231,33 @@ export class AdminController {
     if (automatedOn && automatedCount < 1) {
       throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_COUNT', 'Set how many automated players join each round (1 or more).');
     }
-    if (automatedOn && automatedCount >= pool) {
-      throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_COUNT', `Automated players must leave cards for real players (fewer than ${pool}).`);
+    const maxEach = data.automatedMaxCards ?? before.automatedMaxCards;
+    const perPlayer = data.maxCardsPerPlayer ?? before.maxCardsPerPlayer;
+    if (automatedOn && maxEach > perPlayer) {
+      throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_CARDS', `Automated players cannot take more cards than real players may (${perPlayer}).`);
+    }
+    if (automatedOn && automatedCount * maxEach >= pool) {
+      throw new AppError(
+        HttpStatus.BAD_REQUEST,
+        'AUTOMATED_COUNT',
+        `Automated players could take ${automatedCount * maxEach} cards: keep it under ${pool} so real players always have cards.`,
+      );
     }
     const r = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.room.update({ where: { id }, data });
       // Every room change is recorded with who made it and what it was before and after.
       // Only fields that were sent; the automated-player fields are always included so their history is clear.
-      const changed = [...new Set([...Object.keys(data).filter((k) => (data as Record<string, unknown>)[k] !== undefined), 'automatedEnabled', 'automatedPlayers'])];
+      const changed = [
+        ...new Set([...Object.keys(data).filter((k) => (data as Record<string, unknown>)[k] !== undefined), 'automatedEnabled', 'automatedPlayers', 'automatedMaxCards']),
+      ];
       const pick = (row: object) => Object.fromEntries(changed.map((k) => [k, (row as Record<string, unknown>)[k]]));
       await this.audit.record(
         {
           staffId: staff.id,
           action:
-            before.automatedEnabled !== updated.automatedEnabled || before.automatedPlayers !== updated.automatedPlayers
+            before.automatedEnabled !== updated.automatedEnabled ||
+            before.automatedPlayers !== updated.automatedPlayers ||
+            before.automatedMaxCards !== updated.automatedMaxCards
               ? 'ROOM_AUTOMATED_PLAYERS'
               : 'ROOM_UPDATE',
           targetType: 'room',
@@ -274,6 +288,7 @@ export class AdminController {
       houseWinningCards: r.houseWinningCards,
       automatedAnnounced: r.housePlanned,
       automatedCards: r.houseCards.length,
+      automatedPlayers: automatedPlayersIn(r),
       automatedSkipped: r.houseSkipped,
       houseCut: money(r.houseCutMinor),
       topUp: money(r.topUpMinor),
