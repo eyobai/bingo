@@ -173,11 +173,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
             <span className="text-muted">/{max}</span>
           </span>
         </div>
-        {showAutomatedNotice && (
-          <p id="automated-card-disclosure" className="px-4 pt-3 text-xs leading-relaxed text-ink">
-            {t('automatedBody', { n: automated, stake: state.room.stake.birr })}
-          </p>
-        )}
+       
         {!state.room.entriesPaused && <p className="px-4 pt-2 text-[11px] text-muted">{t('tapToPick')}</p>}
         <div className="grid grid-cols-10 gap-1 p-2.5">
           {(state.room.entriesPaused ? mine : Array.from({ length: state.room.cardPool }, (_, i) => i + 1)).map((n) => {
