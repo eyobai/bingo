@@ -191,11 +191,11 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
           </span>
         </div>
         {/* Shown before purchase: tapping a free card buys it and acknowledges this notice (sent to the server). */}
-        {showAutomatedNotice && (
+        {/* {showAutomatedNotice && (
           <p id="automated-card-disclosure" role="note" className="mx-3 mt-3 rounded-lg border border-sky-400/50 bg-sky-400/10 px-3 py-2 text-[11px] leading-snug">
             🤖 {t('automatedBody', { n: automated, stake: state.room.stake.birr, cards: state.room.automatedMaxCards ?? 1 })}
           </p>
-        )}
+        )} */}
         {!state.room.entriesPaused && <p className="px-4 pt-2 text-[11px] text-muted">{t('tapToPick')}</p>}
         <div className="grid grid-cols-10 gap-1 p-2.5">
           {(state.room.entriesPaused ? mine : Array.from({ length: state.room.cardPool }, (_, i) => i + 1)).map((n) => {
@@ -524,10 +524,13 @@ function ResultView({ state, mine, now }: RoomHook) {
   if (!result) return null;
   const left = new Date(result.nextRoundAt).getTime() - now();
   const won = myWins.length ? (Number(result.prizePerWinner.minor) * myWins.length) / 100 : 0;
+  // const winnerName = (w: Winner) =>
+  //   // Automated players have names but are always labelled as automated.
+  //   w.automated ? t('automatedPlayer', { name: w.name }) : w.sampleNo ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo }) : w.name;
   const winnerName = (w: Winner) =>
-    // Automated players have names but are always labelled as automated.
-    w.automated ? t('automatedPlayer', { name: w.name }) : w.sampleNo ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo }) : w.name;
-
+    w.sampleNo
+      ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo })
+      : w.name;
   return (
     <div className="winner-glow flex min-h-[70vh] flex-col items-center gap-4 px-4 py-6">
       {myWins.length > 0 && (
