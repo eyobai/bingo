@@ -65,6 +65,7 @@ describe('automated players (integration)', () => {
         { id: 'full', name: 'Full', ...room, selectSeconds: 12, sortOrder: 2 },
         { id: 'solo', name: 'Solo', ...room, selectSeconds: 4, sortOrder: 3 },
         { id: 'refund', name: 'Refund', ...room, selectSeconds: 5, minCards: 10, sortOrder: 4 },
+        { id: 'unfunded', name: 'Unfunded', ...room, selectSeconds: 2, sortOrder: 5 },
       ],
     });
     const config = loadConfig();
@@ -95,6 +96,18 @@ describe('automated players (integration)', () => {
     expect((await state('plain')).room.automatedPlayers).toBe(0);
     const lobby = (await http.get('/api/rooms').expect(200)).body.rooms;
     expect(lobby.find((r: any) => r.id === 'plain')).toMatchObject({ automatedPlayers: 0, round: { needPlayers: 2, automated: 0 } });
+  });
+
+  it('keeps the staff record when every automated player was skipped', async () => {
+    await enable('unfunded', 3);
+    const ready = await automatedRound('unfunded', 3, 900);
+    await disable('unfunded');
+    await until('unfunded', (s) => s.round.number > ready.round.number);
+    const rounds = (await http.get('/api/admin/rounds').set(auth(staff)).expect(200)).body;
+    expect(rounds.find((r: any) => r.number === ready.round.number)).toMatchObject({
+      status: 'CANCELLED', automatedAnnounced: 3, automatedCards: 0, automatedSkipped: 3,
+    });
+    expect(await bankroll()).toBe(0n);
   });
 
   it('joins at the countdown start, skips what the bankroll cannot pay, and requires the disclosure', async () => {

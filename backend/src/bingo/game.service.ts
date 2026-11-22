@@ -565,7 +565,8 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       if (short) {
         await this.refundAll(tx, round, cards);
         await tx.round.update({ where: { id: roundId }, data: { status: RoundStatus.CANCELLED, finishedAt: new Date() } });
-        return cards.length || round.houseStakeMinor > 0n ? ('refunded' as const) : ('empty' as const);
+        if (cards.length || round.houseStakeMinor > 0n) return 'refunded' as const;
+        return round.housePlanned > 0 ? ('announcedEmpty' as const) : ('empty' as const);
       }
       const started = await tx.round.update({ where: { id: roundId }, data: { status: RoundStatus.DRAWING, startedAt: new Date() } });
       return { started, cards };
@@ -584,9 +585,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       this.schedule(l, l.round.selectEndsAt.getTime() - Date.now(), () => this.closeSelection(l));
       return;
     }
-    if (outcome === 'empty') {
-      // Nobody played: quietly start a fresh countdown.
-      await this.prisma.round.delete({ where: { id: roundId } }).catch(() => undefined);
+    if (outcome === 'empty' || outcome === 'announcedEmpty') {
+      // Keep cancelled automated rounds for staff, even if no stakes were placed.
+      if (outcome === 'empty') await this.prisma.round.delete({ where: { id: roundId } }).catch(() => undefined);
       return this.openRound(l.room);
     }
     if (outcome === 'refunded') {
