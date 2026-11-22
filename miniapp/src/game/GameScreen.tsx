@@ -81,27 +81,14 @@ function Countdown({ ms }: { ms: number }) {
   );
 }
 
-/** Disclosure shown before purchase in rooms with house-funded automated players. */
-function AutomatedNotice({ n, stake, bare }: { n: number; stake: string; bare?: boolean }) {
-  const { t } = useI18n();
-  return (
-    <section role="note" className={bare ? '' : 'rounded-2xl border border-sky-400/50 bg-sky-400/10 px-3 py-2.5'}>
-      <h2 className="text-sm font-black">{t('automatedTitle')}</h2>
-      <p className="mt-1 text-xs leading-relaxed text-muted">{t('automatedBody', { n, stake })}</p>
-    </section>
-  );
-}
-
-/** "12 players · 50 🤖" (automated players are always counted separately). */
-function PlayerCount({ state }: { state: RoomState }) {
+function PlayerCount({ state, totalOnly = false }: { state: RoomState; totalOnly?: boolean }) {
   const { t } = useI18n();
   const bots = state.round.automated ?? 0;
   if (state.room.practice || state.room.houseCash) return <>{t('realPlayers', { n: state.round.players })}</>;
-  // Automated players count as players and are always labelled: "7 players (7 🤖)".
   return (
     <>
       {state.round.players + bots} {t('players')}
-      {bots > 0 && <> ({t('automatedCount', { n: bots })})</>}
+      {!totalOnly && bots > 0 && <> ({t('automatedCount', { n: bots })})</>}
     </>
   );
 }
@@ -111,24 +98,8 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
   const taken = useMemo(() => new Set(state.round.taken), [state.round.taken]);
   const automatedCards = useMemo(() => new Set(state.round.automatedCards ?? []), [state.round.automatedCards]);
   const automated = state.room.automatedPlayers ?? 0;
-  // Players must confirm the automated-player disclosure before their first card in such a room.
-  const ackKey = `automated-ok:${state.room.id}:${automated}`;
-  const [accepted, setAccepted] = useState(() => {
-    try {
-      return localStorage.getItem(ackKey) === '1';
-    } catch {
-      return false;
-    }
-  });
+  const [accepted, setAccepted] = useState(false);
   const [asking, setAsking] = useState<number | null>(null);
-  // A different announced number (staff changed the room) needs a fresh confirmation.
-  useEffect(() => {
-    try {
-      setAccepted(localStorage.getItem(ackKey) === '1');
-    } catch {
-      setAccepted(false);
-    }
-  }, [ackKey]);
   const max = state.room.maxCardsPerPlayer;
   const left = new Date(state.round.selectEndsAt).getTime() - now();
   const closing = left < 1500;
@@ -160,11 +131,6 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
     const n = asking;
     setAsking(null);
     setAccepted(true);
-    try {
-      localStorage.setItem(ackKey, '1');
-    } catch {
-      /* private mode: asked again next time */
-    }
     if (n === null) return;
     telegram.tap();
     try {
@@ -177,11 +143,11 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
 
   return (
     <div className="flex flex-col gap-3 px-3 pb-4 pt-3">
-      {automated > 0 && <AutomatedNotice n={automated} stake={state.room.stake.birr} />}
       {asking !== null && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center">
+        <div role="dialog" aria-modal="true" aria-labelledby="automated-purchase-title" className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center">
           <div className="pop w-full max-w-[460px] rounded-2xl border border-line bg-panel p-4 shadow-2xl">
-            <AutomatedNotice n={automated} stake={state.room.stake.birr} bare />
+            <h2 id="automated-purchase-title" className="text-sm font-black">{t('automatedTitle')}</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted">{t('automatedBody', { n: automated, stake: state.room.stake.birr })}</p>
             <div className="mt-4 flex gap-2">
               <button type="button" onClick={() => setAsking(null)} className="flex-1 rounded-xl border border-line py-3 text-sm font-bold text-muted">
                 {t('automatedCancel')}
@@ -298,7 +264,7 @@ function RoundBar({ state }: { state: RoomState }) {
       </span>
       <span className="flex items-center gap-1.5">
         <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
-          ● {t('live')} · <PlayerCount state={state} />
+          ● {t('live')} · <PlayerCount state={state} totalOnly />
         </span>
         <SoundButton />
       </span>
