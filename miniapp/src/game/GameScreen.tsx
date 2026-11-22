@@ -508,11 +508,6 @@ function ResultView({ state, mine, now }: RoomHook) {
 
   return (
     <div className="winner-glow flex min-h-[70vh] flex-col items-center gap-4 px-4 py-6">
-      {result.winners.some((w) => w.automated) && (
-        <p role="note" className="w-full rounded-xl border border-sky-400/50 bg-sky-400/10 px-3 py-2 text-center text-xs font-bold">
-          {t('automatedWon')}
-        </p>
-      )}
       {myWins.length > 0 && (
         <div className="pop w-full rounded-2xl bg-win px-4 py-3 text-center font-display text-lg text-white">
           {state.room.practice ? t('practiceWin') : t('youWon', { amount: won.toLocaleString('en-US') })}
