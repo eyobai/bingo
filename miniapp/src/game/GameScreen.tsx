@@ -98,8 +98,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
   const taken = useMemo(() => new Set(state.round.taken), [state.round.taken]);
   const automatedCards = useMemo(() => new Set(state.round.automatedCards ?? []), [state.round.automatedCards]);
   const automated = state.room.automatedPlayers ?? 0;
-  const [accepted, setAccepted] = useState(false);
-  const [asking, setAsking] = useState<number | null>(null);
+  const showAutomatedNotice = automated > 0 && !state.room.entriesPaused;
   const max = state.room.maxCardsPerPlayer;
   const left = new Date(state.round.selectEndsAt).getTime() - now();
   const closing = left < 1500;
@@ -111,54 +110,20 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
       telegram.error();
       return toast(`${t('selectCards')}: ${mine.length}/${max}`);
     }
-    if (!isMine && automated > 0 && !accepted) return setAsking(n);
     telegram.tap();
     try {
-      await toggle(n, automated > 0 && accepted);
+      await toggle(n, !isMine && showAutomatedNotice);
     } catch (e) {
       telegram.error();
-      if (e instanceof ApiError && e.code === 'AUTOMATED_TERMS_REQUIRED') {
-        setAccepted(false);
-        setAsking(n);
-      } else if (e instanceof ApiError && e.code === 'INSUFFICIENT_FUNDS') {
+      if (e instanceof ApiError && e.code === 'INSUFFICIENT_FUNDS') {
         toast(t('needMoney'));
         onNeedMoney();
       } else toast(e instanceof Error ? e.message : String(e));
     }
   };
 
-  const accept = async () => {
-    const n = asking;
-    setAsking(null);
-    setAccepted(true);
-    if (n === null) return;
-    telegram.tap();
-    try {
-      await toggle(n, true);
-    } catch (e) {
-      telegram.error();
-      toast(e instanceof Error ? e.message : String(e));
-    }
-  };
-
   return (
     <div className="flex flex-col gap-3 px-3 pb-4 pt-3">
-      {asking !== null && (
-        <div role="dialog" aria-modal="true" aria-labelledby="automated-purchase-title" className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center">
-          <div className="pop w-full max-w-[460px] rounded-2xl border border-line bg-panel p-4 shadow-2xl">
-            <h2 id="automated-purchase-title" className="text-sm font-black">{t('automatedTitle')}</h2>
-            <p className="mt-1 text-xs leading-relaxed text-muted">{t('automatedBody', { n: automated, stake: state.room.stake.birr })}</p>
-            <div className="mt-4 flex gap-2">
-              <button type="button" onClick={() => setAsking(null)} className="flex-1 rounded-xl border border-line py-3 text-sm font-bold text-muted">
-                {t('automatedCancel')}
-              </button>
-              <button type="button" onClick={() => void accept()} className="flex-[2] rounded-xl bg-gold py-3 font-display text-sm text-gold-ink">
-                {t('automatedAccept')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {!state.room.practice && (
         <section className="flex items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2.5">
           <div className="h-8 w-8 rounded-lg bg-panel-2" aria-hidden />
@@ -208,6 +173,11 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
             <span className="text-muted">/{max}</span>
           </span>
         </div>
+        {showAutomatedNotice && (
+          <p id="automated-card-disclosure" className="px-4 pt-3 text-xs leading-relaxed text-ink">
+            {t('automatedBody', { n: automated, stake: state.room.stake.birr })}
+          </p>
+        )}
         {!state.room.entriesPaused && <p className="px-4 pt-2 text-[11px] text-muted">{t('tapToPick')}</p>}
         <div className="grid grid-cols-10 gap-1 p-2.5">
           {(state.room.entriesPaused ? mine : Array.from({ length: state.room.cardPool }, (_, i) => i + 1)).map((n) => {
@@ -230,6 +200,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
                 onClick={() => void pick(n)}
                 aria-pressed={isMine}
                 aria-label={`Card ${n}${isMine ? ', yours' : isAutomated ? `, ${t('automatedTaken')}` : isTaken ? ', taken' : ''}`}
+                aria-describedby={showAutomatedNotice && !isMine && !isTaken ? 'automated-card-disclosure' : undefined}
                 className={`aspect-square min-w-0 rounded-md border text-[11px] font-bold tabular-nums transition-colors ${look} ${isBusy ? 'animate-pulse' : ''}`}
               >
                 {n}
@@ -537,11 +508,6 @@ function ResultView({ state, mine, now }: RoomHook) {
 
   return (
     <div className="winner-glow flex min-h-[70vh] flex-col items-center gap-4 px-4 py-6">
-      {result.winners.some((w) => w.automated) && (
-        <p role="note" className="w-full rounded-xl border border-sky-400/50 bg-sky-400/10 px-3 py-2 text-center text-xs font-bold">
-          {t('automatedWon')}
-        </p>
-      )}
       {myWins.length > 0 && (
         <div className="pop w-full rounded-2xl bg-win px-4 py-3 text-center font-display text-lg text-white">
           {state.room.practice ? t('practiceWin') : t('youWon', { amount: won.toLocaleString('en-US') })}
