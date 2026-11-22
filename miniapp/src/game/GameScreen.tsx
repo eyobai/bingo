@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, type Balances, type RoomState, type Winner } from '../api';
 import { useI18n } from '../i18n';
 import { telegram } from '../telegram';
+import { useOnline, ReconnectingBar } from '../Connection';
 import { useCaller, useSoundSetting } from './caller';
 import { BallChip, BigBall, BingoCard, GoldBall, LETTERS, colorOf, letterOf, oneAway } from './parts';
 import { useRoom, useTick } from './useRoom';
@@ -17,6 +18,11 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
   const room = useRoom(roomId, onWallet);
   const { t } = useI18n();
   const { state } = room;
+  const online = useOnline();
+  // Only after the first connection, so opening a room does not flash the bar.
+  const everConnected = useRef(false);
+  if (room.connected) everConnected.current = true;
+  const reconnecting = online && everConnected.current && !room.connected;
   useTick(250);
   useCaller(state?.round.id ?? '', state?.round.status ?? '', state?.round.calls ?? NO_CALLS);
   // A new phase (countdown, draw, result) starts at the top, even if the player had scrolled down the card list.
@@ -26,11 +32,17 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
   }, [phase]);
 
   if (!state) {
-    return <div className="flex h-64 items-center justify-center text-muted">{room.closed ? t('roomClosed') : '…'}</div>;
+    return (
+      <>
+        {reconnecting && <ReconnectingBar />}
+        <div className="flex h-64 items-center justify-center text-muted">{room.closed ? t('roomClosed') : '…'}</div>
+      </>
+    );
   }
   const { status } = state.round;
   return (
     <>
+      {reconnecting && <ReconnectingBar />}
       {state.room.practice && (
         <div className="mx-3 mt-3 rounded-xl border border-line bg-panel px-3 py-2">
           <h2 className="font-display text-sm">{t('practiceRoom')}</h2>
@@ -322,7 +334,9 @@ function PlayView({ state, mine, layouts }: RoomHook) {
       ))}
     </div>
   );
-  const cards = mine.map((n) => {
+  // Card layouts download separately; a card is shown once its layout has arrived (opening a room mid-draw
+  // or reconnecting could otherwise render a card with no numbers and crash the screen).
+  const cards = mine.filter((n) => layouts[n - 1]).map((n) => {
     const layout = layouts[n - 1];
     const needs = oneAway(layout, marked);
     return (
