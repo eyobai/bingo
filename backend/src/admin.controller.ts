@@ -12,6 +12,8 @@ import { IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, M
 import { GameService, HOUSE_CASH_ROOM_ID, MAX_CARD_POOL, PRACTICE_ROOM_ID, isManagedRoom } from './bingo/game.service';
 import { AdminOnly, AppError, CurrentUser, Public, money, type AuthUser } from './common/common';
 import { LedgerService } from './ledger/ledger.service';
+import { HouseBankrollService } from './ledger/house-bankroll.service';
+import { AuditService } from './audit.service';
 import { PaymentsService, depositView, withdrawalView } from './payments/payments.service';
 import { PrismaService } from './prisma.service';
 
@@ -69,6 +71,13 @@ class RoomUpdateDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1000) @Max(15000) callIntervalMs?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) minCards?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
+  /** House-funded automated players (licensed operators only). */
+  @IsOptional() @IsBoolean() automatedEnabled?: boolean;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(500) automatedPlayers?: number;
+}
+class BankrollMoveDto {
+  @Matches(/^[1-9]\d{0,6}$/) amountBirr!: string;
+  @Matches(/^[A-Za-z0-9][A-Za-z0-9._/-]{2,79}$/) bankReference!: string;
 }
 
 /** Staff API. Every route needs an ADMIN account. Changes to a room apply from its next round. */
@@ -82,6 +91,8 @@ export class AdminController {
     private readonly game: GameService,
     private readonly wallet: WalletService,
     private readonly bot: BotService,
+    private readonly bankroll: HouseBankrollService,
+    private readonly audit: AuditService,
   ) {}
 
   @Get('summary')
@@ -130,18 +141,30 @@ export class AdminController {
     };
   }
 
+  /** House bankroll: operator cash for automated players' stakes. */
   @Get('house-bankroll')
-  async retiredHouseBankroll() {
-    const [balance, recent] = await Promise.all([
-      this.ledger.systemBalance(AccountType.HOUSE_BANKROLL),
-      this.prisma.ledgerTransaction.findMany({
-        where: { type: TxType.HOUSE_FUNDING },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-        select: { id: true, description: true, createdAt: true, metadata: true },
-      }),
-    ]);
-    return { balance: money(balance), recent };
+  houseBankroll() {
+    return this.bankroll.view();
+  }
+
+  /** Records a verified bank transfer of operator cash into the bankroll. Does not move money. */
+  @Post('house-bankroll/funding')
+  @HttpCode(HttpStatus.OK)
+  fundBankroll(@CurrentUser() staff: AuthUser, @Body() body: BankrollMoveDto) {
+    return this.bankroll.fund(staff.id, BigInt(body.amountBirr) * 100n, body.bankReference);
+  }
+
+  /** Records operator cash taken back out of the bankroll. Does not move money. */
+  @Post('house-bankroll/withdrawal')
+  @HttpCode(HttpStatus.OK)
+  withdrawBankroll(@CurrentUser() staff: AuthUser, @Body() body: BankrollMoveDto) {
+    return this.bankroll.withdraw(staff.id, BigInt(body.amountBirr) * 100n, body.bankReference);
+  }
+
+  /** Who changed rooms, automated players and the bankroll, and when. */
+  @Get('audit')
+  auditLog() {
+    return this.audit.list(200);
   }
 
   @Get('deposits')
@@ -191,16 +214,46 @@ export class AdminController {
   }
 
   @Patch('rooms/:id')
-  async updateRoom(@Param('id') id: string, @Body() body: RoomUpdateDto) {
+  async updateRoom(@CurrentUser() staff: AuthUser, @Param('id') id: string, @Body() body: RoomUpdateDto) {
     if (isManagedRoom(id)) throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'This room is not configurable here.');
     const { guaranteedPrizeBirr, stakeBirr, ...rest } = body;
-    const r = await this.prisma.room.update({
-      where: { id },
-      data: {
-        ...rest,
-        ...(guaranteedPrizeBirr !== undefined ? { guaranteedPrizeMinor: BigInt(guaranteedPrizeBirr) * 100n } : {}),
-        ...(stakeBirr !== undefined ? { stakeMinor: BigInt(stakeBirr) * 100n } : {}),
-      },
+    const before = await this.prisma.room.findUnique({ where: { id } });
+    if (!before) throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'No such room.');
+    const data = {
+      ...rest,
+      ...(guaranteedPrizeBirr !== undefined ? { guaranteedPrizeMinor: BigInt(guaranteedPrizeBirr) * 100n } : {}),
+      ...(stakeBirr !== undefined ? { stakeMinor: BigInt(stakeBirr) * 100n } : {}),
+    };
+    const automatedOn = data.automatedEnabled ?? before.automatedEnabled;
+    const automatedCount = data.automatedPlayers ?? before.automatedPlayers;
+    const pool = data.cardPool ?? before.cardPool;
+    if (automatedOn && automatedCount < 1) {
+      throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_COUNT', 'Set how many automated players join each round (1 or more).');
+    }
+    if (automatedOn && automatedCount >= pool) {
+      throw new AppError(HttpStatus.BAD_REQUEST, 'AUTOMATED_COUNT', `Automated players must leave cards for real players (fewer than ${pool}).`);
+    }
+    const r = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.room.update({ where: { id }, data });
+      // Every room change is recorded with who made it and what it was before and after.
+      // Only fields that were sent; the automated-player fields are always included so their history is clear.
+      const changed = [...new Set([...Object.keys(data).filter((k) => (data as Record<string, unknown>)[k] !== undefined), 'automatedEnabled', 'automatedPlayers'])];
+      const pick = (row: object) => Object.fromEntries(changed.map((k) => [k, (row as Record<string, unknown>)[k]]));
+      await this.audit.record(
+        {
+          staffId: staff.id,
+          action:
+            before.automatedEnabled !== updated.automatedEnabled || before.automatedPlayers !== updated.automatedPlayers
+              ? 'ROOM_AUTOMATED_PLAYERS'
+              : 'ROOM_UPDATE',
+          targetType: 'room',
+          targetId: id,
+          before: pick(before),
+          after: pick(updated),
+        },
+        tx,
+      );
+      return updated;
     });
     if (r.isActive) await this.game.ensureRoom(r.id);
     return { ...r, stakeMinor: money(r.stakeMinor), guaranteedPrizeMinor: money(r.guaranteedPrizeMinor), note: 'Applies from the next round.' };
@@ -219,6 +272,9 @@ export class AdminController {
       houseStake: money(r.houseStakeMinor),
       housePrize: money(r.housePrizeMinor),
       houseWinningCards: r.houseWinningCards,
+      automatedAnnounced: r.housePlanned,
+      automatedCards: r.houseCards.length,
+      automatedSkipped: r.houseSkipped,
       houseCut: money(r.houseCutMinor),
       topUp: money(r.topUpMinor),
       calls: r.calls.length,

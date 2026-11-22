@@ -81,9 +81,53 @@ function Countdown({ ms }: { ms: number }) {
   );
 }
 
+/** Disclosure shown before purchase in rooms with house-funded automated players. */
+function AutomatedNotice({ n, stake, bare }: { n: number; stake: string; bare?: boolean }) {
+  const { t } = useI18n();
+  return (
+    <section role="note" className={bare ? '' : 'rounded-2xl border border-sky-400/50 bg-sky-400/10 px-3 py-2.5'}>
+      <h2 className="text-sm font-black">{t('automatedTitle')}</h2>
+      <p className="mt-1 text-xs leading-relaxed text-muted">{t('automatedBody', { n, stake })}</p>
+    </section>
+  );
+}
+
+/** "12 players · 50 🤖" (automated players are always counted separately). */
+function PlayerCount({ state }: { state: RoomState }) {
+  const { t } = useI18n();
+  const humans = state.room.practice || state.room.houseCash ? t('realPlayers', { n: state.round.players }) : `${state.round.players} ${t('players')}`;
+  const bots = state.round.automated ?? 0;
+  return (
+    <>
+      {humans}
+      {bots > 0 && <> · {t('automatedCount', { n: bots })}</>}
+    </>
+  );
+}
+
 function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toast }: RoomHook & { onNeedMoney: () => void; toast: (m: string) => void }) {
   const { t } = useI18n();
   const taken = useMemo(() => new Set(state.round.taken), [state.round.taken]);
+  const automatedCards = useMemo(() => new Set(state.round.automatedCards ?? []), [state.round.automatedCards]);
+  const automated = state.room.automatedPlayers ?? 0;
+  // Players must confirm the automated-player disclosure before their first card in such a room.
+  const ackKey = `automated-ok:${state.room.id}:${automated}`;
+  const [accepted, setAccepted] = useState(() => {
+    try {
+      return localStorage.getItem(ackKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [asking, setAsking] = useState<number | null>(null);
+  // A different announced number (staff changed the room) needs a fresh confirmation.
+  useEffect(() => {
+    try {
+      setAccepted(localStorage.getItem(ackKey) === '1');
+    } catch {
+      setAccepted(false);
+    }
+  }, [ackKey]);
   const max = state.room.maxCardsPerPlayer;
   const left = new Date(state.round.selectEndsAt).getTime() - now();
   const closing = left < 1500;
@@ -95,20 +139,59 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
       telegram.error();
       return toast(`${t('selectCards')}: ${mine.length}/${max}`);
     }
+    if (!isMine && automated > 0 && !accepted) return setAsking(n);
     telegram.tap();
     try {
-      await toggle(n);
+      await toggle(n, automated > 0 && accepted);
     } catch (e) {
       telegram.error();
-      if (e instanceof ApiError && e.code === 'INSUFFICIENT_FUNDS') {
+      if (e instanceof ApiError && e.code === 'AUTOMATED_TERMS_REQUIRED') {
+        setAccepted(false);
+        setAsking(n);
+      } else if (e instanceof ApiError && e.code === 'INSUFFICIENT_FUNDS') {
         toast(t('needMoney'));
         onNeedMoney();
       } else toast(e instanceof Error ? e.message : String(e));
     }
   };
 
+  const accept = async () => {
+    const n = asking;
+    setAsking(null);
+    setAccepted(true);
+    try {
+      localStorage.setItem(ackKey, '1');
+    } catch {
+      /* private mode: asked again next time */
+    }
+    if (n === null) return;
+    telegram.tap();
+    try {
+      await toggle(n, true);
+    } catch (e) {
+      telegram.error();
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3 px-3 pb-4 pt-3">
+      {automated > 0 && <AutomatedNotice n={automated} stake={state.room.stake.birr} />}
+      {asking !== null && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center">
+          <div className="pop w-full max-w-[460px] rounded-2xl border border-line bg-panel p-4 shadow-2xl">
+            <AutomatedNotice n={automated} stake={state.room.stake.birr} bare />
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={() => setAsking(null)} className="flex-1 rounded-xl border border-line py-3 text-sm font-bold text-muted">
+                {t('automatedCancel')}
+              </button>
+              <button type="button" onClick={() => void accept()} className="flex-[2] rounded-xl bg-gold py-3 font-display text-sm text-gold-ink">
+                {t('automatedAccept')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {!state.room.practice && (
         <section className="flex items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2.5">
           <div className="h-8 w-8 rounded-lg bg-panel-2" aria-hidden />
@@ -132,7 +215,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
             </>
           )}
           <span className="text-[10px] text-muted">
-            {state.room.practice || state.room.houseCash ? t('realPlayers', { n: state.round.players }) : `${state.round.players} ${t('players')}`} ·{' '}
+            <PlayerCount state={state} /> ·{' '}
             {state.round.cardsSold + (state.room.practice ? state.room.samplePlayers : 0)} {t('cards')}
           </span>
         </div>
@@ -164,9 +247,12 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
             const isMine = mine.includes(n);
             const isTaken = !isMine && taken.has(n);
             const isBusy = busy.has(n);
+            const isAutomated = isTaken && automatedCards.has(n);
             const look = isMine
               ? 'bg-gold text-gold-ink border-gold'
-              : isTaken
+              : isAutomated
+                ? 'bg-taken/50 text-taken-ink border-dashed border-sky-400/70'
+                : isTaken
                 ? 'bg-taken text-taken-ink border-taken'
                 : 'bg-panel-2 text-ink border-line active:bg-line';
             return (
@@ -176,7 +262,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
                 disabled={isTaken || closing}
                 onClick={() => void pick(n)}
                 aria-pressed={isMine}
-                aria-label={`Card ${n}${isMine ? ', yours' : isTaken ? ', taken' : ''}`}
+                aria-label={`Card ${n}${isMine ? ', yours' : isAutomated ? `, ${t('automatedTaken')}` : isTaken ? ', taken' : ''}`}
                 className={`aspect-square min-w-0 rounded-md border text-[11px] font-bold tabular-nums transition-colors ${look} ${isBusy ? 'animate-pulse' : ''}`}
               >
                 {n}
@@ -211,7 +297,7 @@ function RoundBar({ state }: { state: RoomState }) {
       </span>
       <span className="flex items-center gap-1.5">
         <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
-          ● {t('live')} · {state.room.practice || state.room.houseCash ? t('realPlayers', { n: state.round.players }) : `${state.round.players} ${t('players')}`}
+          ● {t('live')} · <PlayerCount state={state} />
         </span>
         <SoundButton />
       </span>
@@ -479,10 +565,16 @@ function ResultView({ state, mine, now }: RoomHook) {
   if (!result) return null;
   const left = new Date(result.nextRoundAt).getTime() - now();
   const won = myWins.length ? (Number(result.prizePerWinner.minor) * myWins.length) / 100 : 0;
-  const winnerName = (w: Winner) => w.sampleNo ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo }) : w.name;
+  const winnerName = (w: Winner) =>
+    w.automated ? t('automatedPlayer', { n: w.sampleNo ?? 0 }) : w.sampleNo ? t(state.room.houseCash ? 'housePlayer' : 'samplePlayer', { n: w.sampleNo }) : w.name;
 
   return (
     <div className="winner-glow flex min-h-[70vh] flex-col items-center gap-4 px-4 py-6">
+      {result.winners.some((w) => w.automated) && (
+        <p role="note" className="w-full rounded-xl border border-sky-400/50 bg-sky-400/10 px-3 py-2 text-center text-xs font-bold">
+          {t('automatedWon')}
+        </p>
+      )}
       {myWins.length > 0 && (
         <div className="pop w-full rounded-2xl bg-win px-4 py-3 text-center font-display text-lg text-white">
           {state.room.practice ? t('practiceWin') : t('youWon', { amount: won.toLocaleString('en-US') })}

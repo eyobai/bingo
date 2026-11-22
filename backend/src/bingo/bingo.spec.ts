@@ -89,4 +89,13 @@ describe('settle', () => {
     const high = settle({ stakeTotalMinor: 200_000n, houseCutBps: 2000, guaranteedMinor: 100_000n, winners: 1 });
     expect(high).toMatchObject({ prizeMinor: 160_000n, topUpMinor: 0n, houseCutMinor: 40_000n });
   });
+
+  it('pays a sole real winner the whole pool after the cut, including automated players\' stakes', () => {
+    // 50 automated + 10 real players, one 10-birr card each: 600 birr pool, 20% house cut.
+    expect(settle({ stakeTotalMinor: 60n * 1000n, houseCutBps: 2000, guaranteedMinor: 0n, winners: 1 })).toMatchObject({
+      prizeMinor: 48_000n,
+      prizePerWinnerMinor: 48_000n,
+      houseCutMinor: 12_000n,
+    });
+  });
 });

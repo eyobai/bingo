@@ -15,6 +15,7 @@ const HISTORY_LABELS: Record<TxType, string> = {
   WITHDRAWAL_PAYOUT: 'Withdrawal paid',
   ADJUSTMENT: 'Correction',
   HOUSE_FUNDING: 'House bankroll funding',
+  HOUSE_WITHDRAWAL: 'House bankroll withdrawal',
 };
 
 @Injectable()

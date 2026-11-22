@@ -136,13 +136,13 @@ function RetiredHouseBankroll() {
   if (!error && (!data || (!data.recent.length && data.balance.minor === '0'))) return null;
 
   return (
-    <Panel title="Retired House Cash bankroll">
+    <Panel title="House bankroll (automated players)">
       <ErrorLine error={error} />
       {data && (
         <div className="p-4">
           <p className="text-sm">Operator balance: <Birr m={data.balance} /></p>
           {data.recent.length > 0 && (
-            <ul aria-label="Recent funding records" className="mt-2 divide-y divide-line border-t border-line text-xs text-muted">
+            <ul aria-label="Recent bankroll records" className="mt-2 divide-y divide-line border-t border-line text-xs text-muted">
               {data.recent.map(({ id, description, createdAt, metadata }) => (
                 <li key={id} className="py-2">
                   {description} · {fmtDate(createdAt)}

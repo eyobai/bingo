@@ -191,6 +191,35 @@ play against two labeled sample players. At least one real player must pick a ca
 Practice rounds have no stakes or cash prizes and are excluded from paid-game history and staff
 financial reports. Set the flag back to `false` and restart to hide the room.
 
+**Automated players (off by default, per room).** Only where your licence allows house-funded automated
+players competing for real cash. In **Admin → Settings**:
+
+1. **House bankroll:** record each real bank transfer of operator cash with its bank reference
+   (**Record funding**; **Record withdrawal** when you take money out). Recording updates the books; it does
+   not move money. A reference can be used once. Keep this money separate from player funds.
+2. **Room settings → House-funded automated players:** tick the box and set how many join each round
+   (one card each). Applies from the room's next round.
+
+How it works:
+
+- **Disclosure before purchase.** The lobby shows "🤖 N automated" for the room, and the room shows a notice.
+  Before a player's first card the Mini App asks them to confirm; the server refuses a purchase without that
+  confirmation (`AUTOMATED_TERMS_REQUIRED`) and records it on the purchase.
+- **Same stake, same pool, same chance.** With the first real player's card, each announced automated player
+  buys one random free card at the room's normal price, paid from the house bankroll. Every paid card is in the
+  one prize pool and is checked against the same balls. Example: 50 automated + 10 real players at 10 ETB = a
+  600 ETB pool; with a 20% house cut a sole real winner gets 480 ETB.
+- **Prizes and refunds go back to their source.** Real winners are paid to their wallets, automated winners to
+  the bankroll; a tie is split equally per winning card. A cancelled round refunds players to their wallets and
+  automated stakes to the bankroll.
+- **Short bankroll.** Entries the bankroll cannot pay for are skipped (never paid from anywhere else); rounds
+  show "N skipped (bankroll)" in **Admin → Rounds**.
+- **A real player is always needed.** Automated players count toward the 2-player minimum, but a round with no
+  real player's card is cancelled and refunded.
+- **Audit trail.** Every room change (before → after, who, when) and every bankroll movement is listed at the
+  bottom of **Admin → Settings**. Rounds store the announced, joined and skipped automated entries, their cards,
+  stakes and prizes; the ledger has a separate posting for the automated entries of each round.
+
 House Cash has been retired. The old `HOUSE_CASH_ROOM_ENABLED` setting no longer has any effect.
 Any already funded round settles or refunds on upgrade, without taking new entries or funding.
 Historical records and ledger balances are kept. **Admin → Overview** shows the remaining

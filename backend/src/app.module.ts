@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminController, StaffAuthController } from './admin.controller';
+import { AuditService } from './audit.service';
+import { HouseBankrollService } from './ledger/house-bankroll.service';
 import { StaffAuthService } from './auth/staff-auth.service';
 import { AuthController, GameController, MeController, PaymentsController } from './api.controllers';
 import { GameGateway } from './bingo/game.gateway';
@@ -52,6 +54,8 @@ const config = loadConfig();
     { provide: APP_GUARD, useExisting: AuthGuard },
     { provide: APP_FILTER, useClass: ErrorFilter },
     LedgerService,
+    HouseBankrollService,
+    AuditService,
     WalletService,
     UsersService,
     PaymentsService,

@@ -1,6 +1,7 @@
 import { HttpStatus, Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { AccountType, RoundStatus, TxType } from '@prisma/client';
 import type { Room, Round } from '@prisma/client';
+import { randomInt } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { AppError, isUniqueViolation, money } from '../common/common';
 import { APP_CONFIG, type AppConfig } from '../config/config';
@@ -53,6 +54,8 @@ interface LiveWinner {
   cardNo: number;
   name: string;
   sampleNo?: number;
+  /** A house-funded automated player in a paid room: its prize goes to the house bankroll. */
+  automated?: boolean;
   lineIndex: number;
   layout: CardLayout;
 }
@@ -201,6 +204,8 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         entriesPaused: houseCash,
         samplePlayers: reserved.length,
         houseCards: houseCash ? reserved : [],
+        /** House-funded automated players announced for this round (0 = none). Shown before anyone buys. */
+        automatedPlayers: practice ? 0 : round.housePlanned,
         stake: money(room.stakeMinor),
         cardPool: room.cardPool,
         maxCardsPerPlayer: room.maxCardsPerPlayer,
@@ -221,6 +226,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         players: new Set(l.cards.values()).size,
         prize: money(finished ? round.prizeMinor : preview),
         taken: [...l.cards.keys(), ...reserved].sort((a, b) => a - b),
+        /** Automated players who joined (one card each) and their card numbers. */
+        automated: practice ? 0 : round.houseCards.length,
+        automatedCards: practice ? [] : [...round.houseCards].sort((a, b) => a - b),
       },
       result: l.result
         ? {
@@ -241,7 +249,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
 
   // ─── Player actions ───────────────────────────────────────────────────────
 
-  async buyCards(userId: string, roomId: string, cardNos: number[]) {
+  async buyCards(userId: string, roomId: string, cardNos: number[], acceptAutomatedPlayers = false) {
     if (roomId === HOUSE_CASH_ROOM_ID) {
       throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'This game room is closed.');
     }
@@ -256,6 +264,13 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       const updated = await this.ledger.withTx(async (tx) => {
         const round = await this.lockRound(tx, roundId);
         this.assertSelling(round);
+        if (round.housePlanned > 0 && !acceptAutomatedPlayers) {
+          throw new AppError(
+            HttpStatus.BAD_REQUEST,
+            'AUTOMATED_TERMS_REQUIRED',
+            'House-funded automated players take part in this room and can win. Confirm you understand before buying a card.',
+          );
+        }
         const stake = practice ? 0n : round.stakeMinor;
         const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
         if (user.isBlocked) throw new AppError(HttpStatus.FORBIDDEN, 'BLOCKED', 'Your account is blocked. Contact support.');
@@ -300,7 +315,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
             {
               type: TxType.CARD_PURCHASE,
               description: `Round #${round.number}: card${rows.length > 1 ? 's' : ''} ${unique.map((n) => '#' + n).join(', ')}`,
-              metadata: { roundId, cards: unique },
+              metadata: { roundId, cards: unique, ...(round.housePlanned > 0 ? { acceptedAutomatedPlayers: true, automatedAnnounced: round.housePlanned } : {}) },
               lines: [
                 { accountId: accounts.play.id, amountMinor: -fromPlay },
                 { accountId: accounts.main.id, amountMinor: -(total - fromPlay) },
@@ -310,12 +325,24 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
             tx,
           );
         }
-        return tx.round.update({
+        const afterHuman = await tx.round.update({
           where: { id: roundId },
           data: { cardsSold: { increment: rows.length }, stakeTotalMinor: { increment: total } },
         });
+        // The first real player's purchase brings in the announced automated players.
+        if (!practice && afterHuman.housePlanned > 0 && !afterHuman.houseCards.length && !afterHuman.houseSkipped) {
+          return this.joinAutomated(tx, afterHuman);
+        }
+        return afterHuman;
       });
-      l.round = { ...l.round, cardsSold: updated.cardsSold, stakeTotalMinor: updated.stakeTotalMinor };
+      l.round = {
+        ...l.round,
+        cardsSold: updated.cardsSold,
+        stakeTotalMinor: updated.stakeTotalMinor,
+        houseCards: updated.houseCards,
+        houseStakeMinor: updated.houseStakeMinor,
+        houseSkipped: updated.houseSkipped,
+      };
     } catch (e) {
       if (isUniqueViolation(e)) {
         const taken = await this.prisma.card.findMany({ where: { roundId, cardNo: { in: unique } }, select: { cardNo: true } });
@@ -370,6 +397,58 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     return this.myCards(roomId, userId);
   }
 
+  /**
+   * Buys one card for each announced automated player, at the round's normal stake, paid from the house
+   * bankroll. Cards are picked at random from those still free. Entries the bankroll cannot pay for are
+   * skipped (and counted), never paid from anywhere else.
+   */
+  private async joinAutomated(tx: Tx, round: Round): Promise<Round> {
+    const stake = round.stakeMinor;
+    const room = await tx.room.findUniqueOrThrow({ where: { id: round.roomId }, select: { cardPool: true } });
+    const bankroll = await this.ledger.systemAccount(AccountType.HOUSE_BANKROLL, tx);
+    const [{ balance_minor: balance }] = await tx.$queryRaw<{ balance_minor: bigint }[]>`
+      SELECT balance_minor FROM ledger_accounts WHERE id = ${bankroll.id}::uuid FOR UPDATE`;
+    const taken = new Set((await tx.card.findMany({ where: { roundId: round.id }, select: { cardNo: true } })).map((c) => c.cardNo));
+    const free = Array.from({ length: room.cardPool }, (_, i) => i + 1).filter((n) => !taken.has(n));
+    const affordable = stake > 0n ? Number(balance / stake > 100_000n ? 100_000n : balance / stake) : 0;
+    const count = Math.min(round.housePlanned, affordable, free.length);
+    const cards: number[] = [];
+    for (let i = 0; i < count; i++) cards.push(free.splice(randomInt(free.length), 1)[0]);
+    const skipped = round.housePlanned - count;
+    const houseStake = stake * BigInt(count);
+    if (count > 0) {
+      const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
+      await this.ledger.post(
+        {
+          type: TxType.CARD_PURCHASE,
+          description: `Round #${round.number}: ${count} automated player card${count > 1 ? 's' : ''} (house bankroll)`,
+          idempotencyKey: `automated-entry:${round.id}`,
+          metadata: { roundId: round.id, automated: true, cards, announced: round.housePlanned, skipped, stakeMinor: stake.toString() },
+          lines: [
+            { accountId: bankroll.id, amountMinor: -houseStake },
+            { accountId: pot.id, amountMinor: houseStake },
+          ],
+        },
+        tx,
+      );
+    }
+    if (skipped > 0) {
+      this.logger.warn(
+        `Round #${round.number} (${round.roomId}): ${skipped} of ${round.housePlanned} automated entries skipped; bankroll ${money(balance).birr} birr, stake ${money(stake).birr} birr`,
+      );
+    }
+    return tx.round.update({
+      where: { id: round.id },
+      data: {
+        houseCards: cards,
+        houseStakeMinor: houseStake,
+        houseSkipped: skipped,
+        cardsSold: { increment: count },
+        stakeTotalMinor: { increment: houseStake },
+      },
+    });
+  }
+
   // ─── Round lifecycle ──────────────────────────────────────────────────────
 
   private async resume(room: Room) {
@@ -417,6 +496,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         stakeMinor: fresh.stakeMinor,
         houseCutBps: fresh.houseCutBps,
         guaranteedMinor: fresh.guaranteedPrizeMinor,
+        housePlanned: fresh.automatedEnabled && fresh.stakeMinor > 0n && !isManagedRoom(fresh.id) ? fresh.automatedPlayers : 0,
         serverSeed,
         seedHash,
         selectEndsAt: new Date(Date.now() + fresh.selectSeconds * 1000),
@@ -443,8 +523,10 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         const selectEndsAt = new Date(Date.now() + l.room.selectSeconds * 1000);
         return tx.round.update({ where: { id: roundId }, data: { selectEndsAt } });
       }
+      // Automated players count toward the minimum, but a round never runs without a real player.
+      const automated = round.houseCards.length;
       const short = houseCash ? !players || !round.houseStakeMinor
-        : !practice && (cards.length < l.room.minCards || players < MIN_PLAYERS);
+        : !practice && (!players || cards.length + automated < l.room.minCards || players + automated < MIN_PLAYERS);
       if (short) {
         await this.refundAll(tx, round, cards);
         await tx.round.update({ where: { id: roundId }, data: { status: RoundStatus.CANCELLED, finishedAt: new Date() } });
@@ -528,7 +610,8 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         winners: winners.length,
       });
       const humanWinners = winners.filter((w) => 'userId' in w);
-      const houseWinningCards = houseCash ? winners.filter((w) => 'sampleNo' in w).map((w) => w.cardNo) : [];
+      // Automated players' prizes go back to the house bankroll (paid rooms; practice has no money).
+      const houseWinningCards = practice ? [] : winners.filter((w) => 'sampleNo' in w).map((w) => w.cardNo);
       const housePrizeMinor = BigInt(houseWinningCards.length) * s.prizePerWinnerMinor;
       const perUser = new Map<string, bigint>();
       for (const w of humanWinners) perUser.set(w.userId, (perUser.get(w.userId) ?? 0n) + s.prizePerWinnerMinor);
@@ -581,7 +664,9 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       winners: winners.map((w) => ({
         cardNo: w.cardNo,
         ...('sampleNo' in w
-          ? { name: `${houseCash ? 'Automated house player' : 'Sample player'} ${w.sampleNo}`, sampleNo: w.sampleNo }
+          ? practice
+            ? { name: `Sample player ${w.sampleNo}`, sampleNo: w.sampleNo }
+            : { name: `Automated player ${w.sampleNo}`, sampleNo: w.sampleNo, automated: true }
           : { name: (done.names.get(w.userId) ?? 'Player').slice(0, 20) }),
         lineIndex: w.lineIndex,
         layout: this.cardSet[w.cardNo - 1],
@@ -687,6 +772,8 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       housePrizeMinor: r.house_prize_minor,
       houseCards: r.house_cards,
       houseWinningCards: r.house_winning_cards,
+      housePlanned: r.house_planned,
+      houseSkipped: r.house_skipped,
       createdAt: r.created_at,
     };
   }

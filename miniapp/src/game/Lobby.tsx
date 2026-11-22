@@ -143,6 +143,7 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
         )}
         <span className="mt-0.5 block truncate text-[11px] text-muted">
           👤 {room.practice ? t('realPlayers', { n: r.players }) : `${r.players} ${drawing ? t('playing') : t('waiting')}`}
+          {room.automatedPlayers > 0 && <span className="ml-1.5 font-bold text-ink">· {t('automatedShort', { n: room.automatedPlayers })}</span>}
         </span>
         <span className={`mt-0.5 block truncate text-[11px] font-bold ${drawing ? 'text-live' : ''}`} style={drawing ? undefined : { color }}>
           {status}

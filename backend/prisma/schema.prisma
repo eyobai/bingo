@@ -41,6 +41,7 @@ model User {
   deposits    Deposit[]       @relation("DepositUser")
   promoRedemptions PromoRedemption[]
   withdrawals Withdrawal[]    @relation("WithdrawalUser")
+  staffAudits StaffAudit[]    @relation("StaffAudits")
 
   @@map("users")
 }
@@ -102,6 +103,8 @@ enum TxType {
   WITHDRAWAL_PAYOUT
   ADJUSTMENT
   HOUSE_FUNDING
+  /// Operator cash taken back out of the house bankroll.
+  HOUSE_WITHDRAWAL
 }
 
 model LedgerTransaction {
@@ -219,6 +222,10 @@ model Room {
   guaranteedPrizeMinor BigInt   @default(0) @map("guaranteed_prize_minor")
   isActive             Boolean  @default(true) @map("is_active")
   sortOrder            Int      @default(0) @map("sort_order")
+  /// House-funded automated players join paid rounds (licensed operators only). Off by default.
+  automatedEnabled     Boolean  @default(false) @map("automated_enabled")
+  /// How many automated players join each round (one card each) when enabled.
+  automatedPlayers     Int      @default(0) @map("automated_players")
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -261,6 +268,10 @@ model Round {
   housePrizeMinor     BigInt   @default(0) @map("house_prize_minor")
   houseCards          Int[]    @default([]) @map("house_cards")
   houseWinningCards   Int[]    @default([]) @map("house_winning_cards")
+  /// Automated players announced for this round (room setting when the round opened). 0 = none.
+  housePlanned        Int      @default(0) @map("house_planned")
+  /// Announced automated entries that did not join because the house bankroll could not pay their stake.
+  houseSkipped        Int      @default(0) @map("house_skipped")
   createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   room    Room     @relation(fields: [roomId], references: [id])
@@ -346,4 +357,22 @@ model PromoRedemption {
   @@unique([promoId, userId])
   @@index([userId, createdAt])
   @@map("promo_redemptions")
+}
+
+/// Who changed what, for staff actions that affect money or fairness (automated players, bankroll).
+model StaffAudit {
+  id         String   @id @default(uuid()) @db.Uuid
+  staffId    String   @map("staff_id") @db.Uuid
+  action     String   @db.VarChar(64)
+  targetType String   @map("target_type") @db.VarChar(32)
+  targetId   String   @map("target_id") @db.VarChar(64)
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  staff User @relation("StaffAudits", fields: [staffId], references: [id])
+
+  @@index([createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@map("staff_audit")
 }
