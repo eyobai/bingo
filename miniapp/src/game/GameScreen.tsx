@@ -40,7 +40,7 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
       {state.room.houseCash && (
         <div className="mx-3 mt-3 rounded-xl border border-gold/60 bg-panel px-3 py-2">
           <h2 className="font-display text-sm">{t('houseRoom')}</h2>
-          <p className="text-xs text-muted">{t('houseNotice', { n: state.room.samplePlayers })}</p>
+          <p className="text-xs text-muted">{t('houseRetired')}</p>
           <p className="mt-1 text-xs text-muted">
             {state.room.houseCards.map((n, i) => `${t('housePlayer', { n: i + 1 })}: #${n}`).join(' · ')}
           </p>
@@ -83,7 +83,6 @@ function Countdown({ ms }: { ms: number }) {
 
 function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toast }: RoomHook & { onNeedMoney: () => void; toast: (m: string) => void }) {
   const { t } = useI18n();
-  const [accepted, setAccepted] = useState(false);
   const taken = useMemo(() => new Set(state.round.taken), [state.round.taken]);
   const max = state.room.maxCardsPerPlayer;
   const left = new Date(state.round.selectEndsAt).getTime() - now();
@@ -91,21 +90,20 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
 
   const pick = async (n: number) => {
     const isMine = mine.includes(n);
-    if (!isMine && taken.has(n)) return;
+    if (!isMine && (state.room.entriesPaused || taken.has(n))) return;
     if (!isMine && mine.length >= max) {
       telegram.error();
       return toast(`${t('selectCards')}: ${mine.length}/${max}`);
     }
     telegram.tap();
     try {
-      await toggle(n, state.room.houseCash && accepted);
+      await toggle(n);
     } catch (e) {
       telegram.error();
       if (e instanceof ApiError && e.code === 'INSUFFICIENT_FUNDS') {
         toast(t('needMoney'));
         onNeedMoney();
-      } else if (e instanceof ApiError && e.code === 'HOUSE_ROOM_PAUSED') toast(t('houseRoomPaused'));
-      else toast(e instanceof Error ? e.message : String(e));
+      } else toast(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -144,34 +142,25 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
           ))}
         </div>
         <div className="z-10 flex shrink-0 flex-col items-end gap-0.5 text-right">
-          {state.room.entriesPaused ? <span className="text-xs font-bold text-gold">{t('houseRoomPaused')}</span> : (
-            <>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted">{t('startingIn')}</span>
-              <Countdown ms={left} />
-            </>
-          )}
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted">{t('startingIn')}</span>
+          <Countdown ms={left} />
         </div>
       </section>
 
       <section className="rounded-2xl border border-line bg-panel">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <h2 className="font-display text-sm uppercase tracking-wider">
-            {t('selectCards')}{!state.room.practice && ` (${state.room.stake.birr} ETB)`}
+            {state.room.entriesPaused ? t('yourCards') : t('selectCards')}
+            {!state.room.practice && !state.room.entriesPaused && ` (${state.room.stake.birr} ETB)`}
           </h2>
           <span className="font-display text-gold">
             {mine.length}
             <span className="text-muted">/{max}</span>
           </span>
         </div>
-        {state.room.houseCash && !state.room.entriesPaused && (
-          <label className="flex items-start gap-2 px-4 pt-3 text-sm">
-            <input type="checkbox" className="mt-1 accent-gold" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
-            {t('acceptHousePlayers')}
-          </label>
-        )}
         {!state.room.entriesPaused && <p className="px-4 pt-2 text-[11px] text-muted">{t('tapToPick')}</p>}
         <div className="grid grid-cols-10 gap-1 p-2.5">
-          {Array.from({ length: state.room.cardPool }, (_, i) => i + 1).map((n) => {
+          {(state.room.entriesPaused ? mine : Array.from({ length: state.room.cardPool }, (_, i) => i + 1)).map((n) => {
             const isMine = mine.includes(n);
             const isTaken = !isMine && taken.has(n);
             const isBusy = busy.has(n);
@@ -184,7 +173,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
               <button
                 key={n}
                 type="button"
-                disabled={isTaken || closing || (!isMine && (state.room.entriesPaused || (state.room.houseCash && !accepted)))}
+                disabled={isTaken || closing}
                 onClick={() => void pick(n)}
                 aria-pressed={isMine}
                 aria-label={`Card ${n}${isMine ? ', yours' : isTaken ? ', taken' : ''}`}
@@ -205,7 +194,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
               <BingoCard key={n} cardNo={n} layout={layouts[n - 1]} marked={new Set()} compact tone="mine" />
             ))}
           </div>
-        ) : (
+        ) : !state.room.entriesPaused && (
           <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-xs text-muted">{t('noCardsYet', { max })}</p>
         )}
       </section>
@@ -559,7 +548,7 @@ function ResultView({ state, mine, now }: RoomHook) {
           </div>
         </>
       )}
-      <p className="text-xs text-muted">{t('nextRoundIn', { s: Math.max(0, Math.ceil(left / 1000)) })}</p>
+      {!state.room.houseCash && <p className="text-xs text-muted">{t('nextRoundIn', { s: Math.max(0, Math.ceil(left / 1000)) })}</p>}
     </div>
   );
 }
@@ -571,7 +560,7 @@ function CancelledView({ state, now, hadCards }: { state: RoomState; now: () => 
     <div className="flex flex-col items-center gap-3 px-6 py-20 text-center">
       <p className="text-lg font-black">{t('notEnough')}</p>
       {hadCards && <p className="text-sm text-muted">{t('refunded')}</p>}
-      <p className="text-xs text-muted">{t('nextRoundIn', { s: Math.max(0, Math.ceil(left / 1000)) })}</p>
+      {!state.room.houseCash && <p className="text-xs text-muted">{t('nextRoundIn', { s: Math.max(0, Math.ceil(left / 1000)) })}</p>}
     </div>
   );
 }

@@ -95,83 +95,8 @@ export function Settings() {
   return (
     <div className="flex flex-col gap-4">
       <ErrorLine error={rooms.error} />
-      <HouseBankroll />
       {rooms.data?.map((r) => <RoomForm key={r.id} room={r} onSaved={rooms.reload} />)}
     </div>
-  );
-}
-
-interface BankrollView {
-  enabled: boolean;
-  balance: Money;
-  recent: { id: string; description: string; createdAt: string; metadata: { amountMinor: string; staffId: string } }[];
-}
-
-function HouseBankroll() {
-  const bankroll = useApi<BankrollView>('/admin/house-bankroll', 10_000);
-  const toast = useToast();
-  const [amountBirr, setAmount] = useState('');
-  const [bankReference, setReference] = useState('');
-  const [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const data = bankroll.data;
-
-  const submit = async () => {
-    if (!confirmed || busy) return;
-    setBusy(true);
-    try {
-      await api('/admin/house-bankroll/funding', { body: { amountBirr, bankReference: bankReference.trim() } });
-      setAmount('');
-      setReference('');
-      setConfirmed(false);
-      bankroll.reload();
-      toast('Funding recorded.');
-    } catch (e) {
-      toast(e instanceof ApiError ? e.message : String(e), 'bad');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Panel title="House Cash bankroll">
-      <ErrorLine error={bankroll.error} />
-      {data && (
-        <div className="flex flex-col gap-3 p-4">
-          <p className="text-sm">Available for automated stakes: <Birr m={data.balance} /></p>
-          {!data.enabled ? <p className="text-sm text-muted">New House Cash entries are disabled on the server.</p> : (
-            <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
-              <p className="text-xs text-muted">Record cash already transferred from operator funds. This form does not move money.</p>
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-                  Amount (whole birr)
-                  <input className={field} inputMode="numeric" pattern="[1-9][0-9]{0,6}" required value={amountBirr} onChange={(e) => setAmount(e.target.value)} />
-                </label>
-                <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-                  Bank transfer reference
-                  <input className={field} minLength={3} maxLength={80} required value={bankReference} onChange={(e) => setReference(e.target.value)} />
-                </label>
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" required checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
-                I verified that operator cash arrived. No customer funds were used.
-              </label>
-              <div><Button tone="primary" type="submit" disabled={busy || !confirmed}>Record funding</Button></div>
-            </form>
-          )}
-          {data.recent.length > 0 && (
-            <ul className="divide-y divide-line border-t border-line text-xs text-muted">
-              {data.recent.map((record) => (
-                <li key={record.id} className="py-2">
-                  {record.description} · {Number(record.metadata.amountMinor) / 100} ETB · {fmtDate(record.createdAt)}
-                  <span className="block">Recorded by {record.metadata.staffId}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </Panel>
   );
 }
 

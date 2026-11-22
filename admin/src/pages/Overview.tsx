@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Money } from '../api';
+import { fmtDate, type Money } from '../api';
 import { Badge, Birr, ErrorLine, Panel, Stat, useApi } from '../ui';
 
 interface Summary {
@@ -123,6 +123,37 @@ export function Overview({ go }: { go: (page: string) => void }) {
           </p>
         </>
       )}
+      <RetiredHouseBankroll />
     </div>
+  );
+}
+
+function RetiredHouseBankroll() {
+  const { data, error } = useApi<{
+    balance: Money;
+    recent: { id: string; description: string; createdAt: string; metadata: { amountMinor?: string; staffId?: string } | null }[];
+  }>('/admin/house-bankroll', 15_000);
+  if (!error && (!data || (!data.recent.length && data.balance.minor === '0'))) return null;
+
+  return (
+    <Panel title="Retired House Cash bankroll">
+      <ErrorLine error={error} />
+      {data && (
+        <div className="p-4">
+          <p className="text-sm">Operator balance: <Birr m={data.balance} /></p>
+          {data.recent.length > 0 && (
+            <ul aria-label="Recent funding records" className="mt-2 divide-y divide-line border-t border-line text-xs text-muted">
+              {data.recent.map(({ id, description, createdAt, metadata }) => (
+                <li key={id} className="py-2">
+                  {description} · {fmtDate(createdAt)}
+                  {metadata?.amountMinor && <> · {Number(metadata.amountMinor) / 100} ETB</>}
+                  {metadata?.staffId && <span className="block">Recorded by {metadata.staffId}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </Panel>
   );
 }

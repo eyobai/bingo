@@ -191,22 +191,10 @@ play against two labeled sample players. At least one real player must pick a ca
 Practice rounds have no stakes or cash prizes and are excluded from paid-game history and staff
 financial reports. Set the flag back to `false` and restart to hide the room.
 
-**House Cash (off by default).** This is a separate 10 ETB room, not Free Practice or Classic.
-Enable it only where house-funded automated players are permitted by your licence. Apply the
-database migration, set `HOUSE_CASH_ROOM_ENABLED=true`, and restart. In **Admin → Settings → House
-Cash bankroll**, record an external transfer of verified operator cash with its unique bank
-reference. Recording a transfer updates the ledger; it does not move money. Keep this reserve
-separate from customer funds and reconcile it against the ledger.
-
-The Mini App discloses that both automated players can win and requires acknowledgment before
-purchase. The first human purchase and the two automated stakes post together, or none post if
-the house cannot cover both cards. At least one human must stay in the round for the draw to
-start. The same draw checks every card; human prizes go to their normal wallets and automated
-prizes go to the bankroll. A cancelled round refunds the original sources. Admin rounds and
-summary reports identify the amounts attributable to the house players.
-
-To stop new entries, set the flag to `false` and restart on this version. An already funded round
-still settles or refunds; wait for it to finish before rolling back to older code.
+House Cash has been retired. The old `HOUSE_CASH_ROOM_ENABLED` setting no longer has any effect.
+Any already funded round settles or refunds on upgrade, without taking new entries or funding.
+Historical records and ledger balances are kept. **Admin → Overview** shows the remaining
+operator balance and recent funding records for reconciliation. No funds are transferred automatically.
 
 - Rooms are rows in the `rooms` table (stake, card pool, countdown, ball speed, house share, minimum cards,
   guaranteed prize). Staff change them with `PATCH /api/admin/rooms/:id`; changes apply from the next round.

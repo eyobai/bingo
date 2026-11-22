@@ -19,7 +19,7 @@ export interface PostingInput {
 }
 
 /** System accounts that may go below zero: they record money that came from or left to the outside. */
-const ALLOW_NEGATIVE: AccountType[] = [AccountType.PAYMENT_CLEARING, AccountType.PROMOTIONS, AccountType.ADJUSTMENTS, AccountType.HOUSE_CAPITAL];
+const ALLOW_NEGATIVE: AccountType[] = [AccountType.PAYMENT_CLEARING, AccountType.PROMOTIONS, AccountType.ADJUSTMENTS];
 const USER_TYPES: AccountType[] = [AccountType.USER_MAIN, AccountType.USER_PLAY, AccountType.USER_WITHDRAW_HOLD];
 
 export interface UserAccounts {
@@ -84,9 +84,6 @@ export class LedgerService {
       if (after < 0n && !acc.allow_negative) {
         if (acc.type === AccountType.USER_MAIN || acc.type === AccountType.USER_PLAY) {
           throw new AppError(HttpStatus.UNPROCESSABLE_ENTITY, 'INSUFFICIENT_FUNDS', 'Not enough money in your wallet.');
-        }
-        if (acc.type === AccountType.HOUSE_BANKROLL) {
-          throw new AppError(HttpStatus.CONFLICT, 'HOUSE_ROOM_PAUSED', 'This room is paused until the house players can cover their stakes.');
         }
         throw new Error(`Posting would make ${acc.code} negative`);
       }

@@ -2,9 +2,9 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Par
 import { JwtService } from '@nestjs/jwt';
 import { PaymentMethod } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Min } from 'class-validator';
 import { verifyInitData } from './auth/telegram-init-data';
-import { GameService, MIN_PLAYERS, PRACTICE_ROOM_ID } from './bingo/game.service';
+import { GameService, HOUSE_CASH_ROOM_ID, MIN_PLAYERS, PRACTICE_ROOM_ID } from './bingo/game.service';
 import { lineName } from './bingo/cards';
 import { AppError, CurrentUser, Public, money, type AuthUser } from './common/common';
 import { APP_CONFIG, type AppConfig } from './config/config';
@@ -30,7 +30,6 @@ class LanguageDto {
 }
 class BuyCardsDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(10) @IsInt({ each: true }) cardNos!: number[];
-  @IsOptional() @IsBoolean() acceptHousePlayers?: boolean;
 }
 class DepositDto {
   @IsIn(Object.values(PaymentMethod)) method!: PaymentMethod;
@@ -177,7 +176,8 @@ export class GameController {
   @Get('rooms')
   rooms() {
     // Lobby: every open room with a short live summary.
-    const rooms = this.game.roomIds().flatMap((id) => {
+    const ids = this.game.roomIds();
+    const rooms = ids.filter((id) => id !== HOUSE_CASH_ROOM_ID).flatMap((id) => {
       const s = this.game.publicState(id);
       if (!s) return [];
       const { round, room } = s;
@@ -193,13 +193,17 @@ export class GameController {
             prize: round.prize,
             selectEndsAt: round.selectEndsAt,
             calls: round.calls.length,
-            needPlayers: Math.max(0, (room.practice || room.houseCash ? 1 : MIN_PLAYERS) - round.players),
+            needPlayers: Math.max(0, (room.practice ? 1 : MIN_PLAYERS) - round.players),
             nextRoundAt: s.result?.nextRoundAt ?? s.cancelled?.nextRoundAt ?? null,
           },
         },
       ];
     });
-    return { serverTime: new Date().toISOString(), rooms };
+    return {
+      serverTime: new Date().toISOString(),
+      rooms,
+      ...(ids.includes(HOUSE_CASH_ROOM_ID) ? { retiringRoomId: HOUSE_CASH_ROOM_ID } : {}),
+    };
   }
 
   /** Card layouts 1..pool. They never change, so the app downloads them once. */
@@ -225,7 +229,7 @@ export class GameController {
   @Post('rooms/:roomId/cards')
   @HttpCode(HttpStatus.OK)
   async buy(@CurrentUser() auth: AuthUser, @Param('roomId') roomId: string, @Body() body: BuyCardsDto) {
-    return { cards: await this.game.buyCards(auth.id, roomId, body.cardNos, body.acceptHousePlayers === true) };
+    return { cards: await this.game.buyCards(auth.id, roomId, body.cardNos) };
   }
 
   @Delete('rooms/:roomId/cards/:cardNo')

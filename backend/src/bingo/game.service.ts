@@ -33,26 +33,9 @@ const PRACTICE_ROOM = {
 };
 // Reserved cards let sample players resume with the round without creating user or wallet records.
 const SAMPLE_CARDS = [PRACTICE_ROOM.cardPool - 1, PRACTICE_ROOM.cardPool];
-const HOUSE_CASH_ROOM = {
-  name: 'House Cash',
-  stakeMinor: 1000n,
-  guaranteedPrizeMinor: 0n,
-  houseCutBps: 2000,
-  cardPool: 100,
-  minCards: 1,
-  selectSeconds: 60,
-  callIntervalMs: 3000,
-  sortOrder: 5,
-  // Only the feature-flag path may start this room, including across rollbacks.
-  isActive: false,
-};
-const HOUSE_SAMPLE_CARDS = [HOUSE_CASH_ROOM.cardPool - 1, HOUSE_CASH_ROOM.cardPool];
-const HOUSE_ROUND_COST = HOUSE_CASH_ROOM.stakeMinor * BigInt(HOUSE_SAMPLE_CARDS.length);
-
 function reservedCards(round: Round) {
   if (round.roomId === PRACTICE_ROOM_ID) return SAMPLE_CARDS;
-  if (round.roomId === HOUSE_CASH_ROOM_ID) return round.houseCards.length ? round.houseCards : HOUSE_SAMPLE_CARDS;
-  return [];
+  return round.houseCards;
 }
 
 /** One room per stake, shown in the lobby in this order. */
@@ -86,7 +69,6 @@ interface LiveRoom {
   timer?: NodeJS.Timeout;
   result?: { winners: LiveWinner[]; prizePerWinnerMinor: bigint; nextRoundAt: Date };
   cancelled?: { reason: string; nextRoundAt: Date };
-  houseFundingReady?: boolean;
   pendingWinners?: DrawWinner[];
   busy: boolean;
 }
@@ -144,22 +126,16 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         }),
       );
     }
-    if (this.config.houseCashRoomEnabled) {
-      rooms.push(
-        await this.prisma.room.upsert({
-          where: { id: HOUSE_CASH_ROOM_ID },
-          create: { id: HOUSE_CASH_ROOM_ID, ...HOUSE_CASH_ROOM },
-          update: HOUSE_CASH_ROOM,
-        }),
-      );
-    } else {
-      // Disable new bets immediately, but don't abandon an already funded round.
-      const cashRound = await this.prisma.round.findFirst({
-        where: { roomId: HOUSE_CASH_ROOM_ID, status: { in: [RoundStatus.SELECTING, RoundStatus.DRAWING] }, houseStakeMinor: { gt: 0n } },
-        include: { room: true },
-      });
-      if (cashRound) rooms.push(cashRound.room);
-    }
+    // Retire empty countdowns and finish only rounds with money already in the pot.
+    await this.prisma.round.updateMany({
+      where: { roomId: HOUSE_CASH_ROOM_ID, status: RoundStatus.SELECTING, houseStakeMinor: 0n, cards: { none: {} } },
+      data: { status: RoundStatus.CANCELLED, finishedAt: new Date() },
+    });
+    const cashRound = await this.prisma.round.findFirst({
+      where: { roomId: HOUSE_CASH_ROOM_ID, status: { in: [RoundStatus.SELECTING, RoundStatus.DRAWING] }, houseStakeMinor: { gt: 0n } },
+      include: { room: true },
+    });
+    if (cashRound) rooms.push(cashRound.room);
     this.cardSet = generateCardSet(MAX_CARD_POOL, this.config.cardSetSeed);
     for (const room of rooms) await this.resume(room);
   }
@@ -169,13 +145,6 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     if (isManagedRoom(roomId) || this.live.has(roomId)) return;
     const room = await this.prisma.room.findUnique({ where: { id: roomId } });
     if (room?.isActive) await this.resume(room);
-  }
-
-  async refreshHouseCashAvailability() {
-    const l = this.live.get(HOUSE_CASH_ROOM_ID);
-    if (!l || !this.config.houseCashRoomEnabled) return;
-    l.houseFundingReady = (await this.ledger.systemBalance(AccountType.HOUSE_BANKROLL)) >= HOUSE_ROUND_COST;
-    this.changed(HOUSE_CASH_ROOM_ID);
   }
 
   onModuleDestroy() {
@@ -229,7 +198,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         name: room.name,
         practice,
         houseCash,
-        entriesPaused: houseCash && (!this.config.houseCashRoomEnabled || (round.houseStakeMinor === 0n && !l.houseFundingReady)),
+        entriesPaused: houseCash,
         samplePlayers: reserved.length,
         houseCards: houseCash ? reserved : [],
         stake: money(room.stakeMinor),
@@ -272,16 +241,12 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
 
   // ─── Player actions ───────────────────────────────────────────────────────
 
-  async buyCards(userId: string, roomId: string, cardNos: number[], acceptHousePlayers = false) {
+  async buyCards(userId: string, roomId: string, cardNos: number[]) {
+    if (roomId === HOUSE_CASH_ROOM_ID) {
+      throw new AppError(HttpStatus.NOT_FOUND, 'ROOM_NOT_FOUND', 'This game room is closed.');
+    }
     const l = this.requireRoom(roomId);
     const practice = roomId === PRACTICE_ROOM_ID;
-    const houseCash = roomId === HOUSE_CASH_ROOM_ID;
-    if (houseCash && !this.config.houseCashRoomEnabled) {
-      throw new AppError(HttpStatus.CONFLICT, 'HOUSE_ROOM_PAUSED', 'This room is no longer taking entries.');
-    }
-    if (houseCash && !acceptHousePlayers) {
-      throw new AppError(HttpStatus.BAD_REQUEST, 'HOUSE_TERMS_REQUIRED', 'Confirm that you understand house-funded automated players can win before buying a card.');
-    }
     const unique = [...new Set(cardNos)];
     if (!unique.length || unique.some((n) => !Number.isInteger(n) || n < 1 || n > l.room.cardPool)) {
       throw new AppError(HttpStatus.BAD_REQUEST, 'BAD_CARD', `Pick card numbers between 1 and ${l.room.cardPool}.`);
@@ -328,25 +293,18 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         });
         await tx.card.createMany({ data: rows });
         const total = stake * BigInt(rows.length);
-        const houseStake = houseCash && !round.houseStakeMinor ? round.stakeMinor * BigInt(reserved.length) : 0n;
         if (accounts) {
           const fromPlay = rows.reduce((s, r) => s + r.paidPlayMinor, 0n);
           const pot = await this.ledger.systemAccount(AccountType.GAME_POT, tx);
-          const house = houseStake > 0n ? await this.ledger.systemAccount(AccountType.HOUSE_BANKROLL, tx) : null;
           await this.ledger.post(
             {
               type: TxType.CARD_PURCHASE,
               description: `Round #${round.number}: card${rows.length > 1 ? 's' : ''} ${unique.map((n) => '#' + n).join(', ')}`,
-              metadata: {
-                roundId, cards: unique,
-                ...(houseCash ? { acceptedHousePlayers: true } : {}),
-                ...(house ? { houseCards: reserved, houseStakeMinor: houseStake.toString() } : {}),
-              },
+              metadata: { roundId, cards: unique },
               lines: [
                 { accountId: accounts.play.id, amountMinor: -fromPlay },
                 { accountId: accounts.main.id, amountMinor: -(total - fromPlay) },
-                ...(house ? [{ accountId: house.id, amountMinor: -houseStake }] : []),
-                { accountId: pot.id, amountMinor: total + houseStake },
+                { accountId: pot.id, amountMinor: total },
               ],
             },
             tx,
@@ -354,21 +312,11 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
         }
         return tx.round.update({
           where: { id: roundId },
-          data: {
-            cardsSold: { increment: rows.length + (houseStake > 0n ? reserved.length : 0) },
-            stakeTotalMinor: { increment: total + houseStake },
-            ...(houseStake > 0n ? { houseStakeMinor: houseStake, houseCards: reserved } : {}),
-          },
+          data: { cardsSold: { increment: rows.length }, stakeTotalMinor: { increment: total } },
         });
       });
-      l.round = {
-        ...l.round, cardsSold: updated.cardsSold, stakeTotalMinor: updated.stakeTotalMinor, houseStakeMinor: updated.houseStakeMinor, houseCards: updated.houseCards,
-      };
+      l.round = { ...l.round, cardsSold: updated.cardsSold, stakeTotalMinor: updated.stakeTotalMinor };
     } catch (e) {
-      if (houseCash && e instanceof AppError && e.code === 'HOUSE_ROOM_PAUSED') {
-        l.houseFundingReady = false;
-        this.changed(roomId);
-      }
       if (isUniqueViolation(e)) {
         const taken = await this.prisma.card.findMany({ where: { roundId, cardNo: { in: unique } }, select: { cardNo: true } });
         throw this.takenError(taken.map((t) => t.cardNo));
@@ -426,7 +374,11 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
 
   private async resume(room: Room) {
     const open = await this.prisma.round.findFirst({
-      where: { roomId: room.id, status: { in: [RoundStatus.SELECTING, RoundStatus.DRAWING] } },
+      where: {
+        roomId: room.id,
+        status: { in: [RoundStatus.SELECTING, RoundStatus.DRAWING] },
+        ...(room.id === HOUSE_CASH_ROOM_ID ? { houseStakeMinor: { gt: 0n } } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       include: { cards: { select: { cardNo: true, userId: true } } },
     });
@@ -441,7 +393,6 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       busy: false,
     };
     this.live.set(room.id, l);
-    if (room.id === HOUSE_CASH_ROOM_ID) await this.refreshHouseCashAvailability();
     this.logger.log(`Resumed ${room.id} round #${round.number} (${round.status})`);
     if (round.status === RoundStatus.SELECTING) {
       this.schedule(l, round.selectEndsAt.getTime() - Date.now(), () => this.closeSelection(l));
@@ -453,9 +404,8 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
 
   private async openRound(room: Room) {
     if (this.stopped) return;
-    const fresh = await this.prisma.room.findUnique({ where: { id: room.id } });
-    const shouldOpen = room.id === HOUSE_CASH_ROOM_ID ? this.config.houseCashRoomEnabled : fresh?.isActive;
-    if (!fresh || !shouldOpen) {
+    const fresh = room.id === HOUSE_CASH_ROOM_ID ? null : await this.prisma.room.findUnique({ where: { id: room.id } });
+    if (!fresh?.isActive) {
       this.live.delete(room.id);
       this.changed(room.id);
       return;
@@ -476,7 +426,6 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     const previous = this.live.get(fresh.id);
     if (previous) clearTimeout(previous.timer);
     this.live.set(fresh.id, l);
-    if (fresh.id === HOUSE_CASH_ROOM_ID) await this.refreshHouseCashAvailability();
     this.changed(fresh.id);
     this.schedule(l, fresh.selectSeconds * 1000, () => this.closeSelection(l));
   }
@@ -490,7 +439,7 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
       if (round.status !== RoundStatus.SELECTING) return 'skip' as const;
       const cards = await tx.card.findMany({ where: { roundId } });
       const players = new Set(cards.map((c) => c.userId)).size;
-      if (!players && (practice || (houseCash && !round.houseStakeMinor && this.config.houseCashRoomEnabled))) {
+      if (practice && !players) {
         const selectEndsAt = new Date(Date.now() + l.room.selectSeconds * 1000);
         return tx.round.update({ where: { id: roundId }, data: { selectEndsAt } });
       }
@@ -514,7 +463,6 @@ export class GameService extends EventEmitter<GameEvents> implements OnApplicati
     }
     if (typeof outcome !== 'string') {
       l.round = outcome;
-      if (houseCash) await this.refreshHouseCashAvailability();
       this.changed(l.room.id);
       this.schedule(l, l.round.selectEndsAt.getTime() - Date.now(), () => this.closeSelection(l));
       return;
