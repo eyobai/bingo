@@ -92,16 +92,14 @@ function AutomatedNotice({ n, stake, bare }: { n: number; stake: string; bare?: 
   );
 }
 
-/** "12 players · 50 🤖" (automated players are always counted separately). */
-function PlayerCount({ state }: { state: RoomState }) {
+function PlayerCount({ state, totalOnly = false }: { state: RoomState; totalOnly?: boolean }) {
   const { t } = useI18n();
   const bots = state.round.automated ?? 0;
   if (state.room.practice || state.room.houseCash) return <>{t('realPlayers', { n: state.round.players })}</>;
-  // Automated players count as players and are always labelled: "7 players (7 🤖)".
   return (
     <>
       {state.round.players + bots} {t('players')}
-      {bots > 0 && <> ({t('automatedCount', { n: bots })})</>}
+      {!totalOnly && bots > 0 && <> ({t('automatedCount', { n: bots })})</>}
     </>
   );
 }
@@ -298,7 +296,7 @@ function RoundBar({ state }: { state: RoomState }) {
       </span>
       <span className="flex items-center gap-1.5">
         <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
-          ● {t('live')} · <PlayerCount state={state} />
+          ● {t('live')} · <PlayerCount state={state} totalOnly />
         </span>
         <SoundButton />
       </span>
