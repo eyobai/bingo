@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, type Balances, type RoomState } from '../api';
+import { ApiError, type Balances, type RoomState, type Winner } from '../api';
 import { useI18n } from '../i18n';
 import { telegram } from '../telegram';
 import { useCaller, useSoundSetting } from './caller';
@@ -15,6 +15,7 @@ interface Props {
 
 export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
   const room = useRoom(roomId, onWallet);
+  const { t } = useI18n();
   const { state } = room;
   useTick(250);
   useCaller(state?.round.id ?? '', state?.round.status ?? '', state?.round.calls ?? NO_CALLS);
@@ -28,10 +29,20 @@ export function GameScreen({ roomId, onWallet, onNeedMoney, toast }: Props) {
     return <div className="flex h-64 items-center justify-center text-muted">…</div>;
   }
   const { status } = state.round;
-  if (status === 'SELECTING') return <SelectView {...room} state={state} onNeedMoney={onNeedMoney} toast={toast} />;
-  if (status === 'DRAWING') return <PlayView {...room} state={state} />;
-  if (status === 'FINISHED') return <ResultView {...room} state={state} />;
-  return <CancelledView state={state} now={room.now} hadCards={room.mine.length > 0} />;
+  return (
+    <>
+      {state.room.practice && (
+        <div className="mx-3 mt-3 rounded-xl border border-line bg-panel px-3 py-2">
+          <h2 className="font-display text-sm">{t('practiceRoom')}</h2>
+          <p className="text-xs text-muted">{t('practiceNotice', { n: state.room.samplePlayers })}</p>
+        </div>
+      )}
+      {status === 'SELECTING' && <SelectView {...room} state={state} onNeedMoney={onNeedMoney} toast={toast} />}
+      {status === 'DRAWING' && <PlayView {...room} state={state} />}
+      {status === 'FINISHED' && <ResultView {...room} state={state} />}
+      {status === 'CANCELLED' && <CancelledView state={state} now={room.now} hadCards={room.mine.length > 0} />}
+    </>
+  );
 }
 
 type RoomHook = ReturnType<typeof useRoom> & { state: RoomState };
@@ -89,24 +100,31 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
 
   return (
     <div className="flex flex-col gap-3 px-3 pb-4 pt-3">
-      <section className="flex items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2.5">
-        <div className="h-8 w-8 rounded-lg bg-panel-2" aria-hidden />
-        <div className="leading-tight">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-muted">{t('events')}</p>
-          <p className="text-sm font-bold">{t('eventsTitle')}</p>
-          <p className="text-[10px] text-muted">{t('eventsBody')}</p>
-        </div>
-      </section>
+      {!state.room.practice && (
+        <section className="flex items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2.5">
+          <div className="h-8 w-8 rounded-lg bg-panel-2" aria-hidden />
+          <div className="leading-tight">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-muted">{t('events')}</p>
+            <p className="text-sm font-bold">{t('eventsTitle')}</p>
+            <p className="text-[10px] text-muted">{t('eventsBody')}</p>
+          </div>
+        </section>
+      )}
 
       <section className="jackpot relative flex items-center justify-between gap-2 overflow-hidden rounded-2xl px-4 py-3">
         <div className="z-10 flex flex-col gap-1">
-          <span className="w-fit rounded-md bg-gold/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-gold">{t('jackpot')}</span>
-          <span className="font-display text-[26px] leading-none tabular-nums">
-            {state.round.prize.birr}
-            <span className="ml-1 text-base">ETB</span>
-          </span>
+          {!state.room.practice && (
+            <>
+              <span className="w-fit rounded-md bg-gold/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-gold">{t('jackpot')}</span>
+              <span className="font-display text-[26px] leading-none tabular-nums">
+                {state.round.prize.birr}
+                <span className="ml-1 text-base">ETB</span>
+              </span>
+            </>
+          )}
           <span className="text-[10px] text-muted">
-            {state.round.players} {t('players')} · {state.round.cardsSold} {t('cards')}
+            {state.room.practice ? t('realPlayers', { n: state.round.players }) : `${state.round.players} ${t('players')}`} ·{' '}
+            {state.round.cardsSold + (state.room.samplePlayers ?? 0)} {t('cards')}
           </span>
         </div>
         <div className="relative hidden h-20 w-32 shrink-0 min-[400px]:block" aria-hidden>
@@ -123,7 +141,7 @@ function SelectView({ state, mine, layouts, busy, toggle, now, onNeedMoney, toas
       <section className="rounded-2xl border border-line bg-panel">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <h2 className="font-display text-sm uppercase tracking-wider">
-            {t('selectCards')} ({state.room.stake.birr} ETB)
+            {t('selectCards')}{!state.room.practice && ` (${state.room.stake.birr} ETB)`}
           </h2>
           <span className="font-display text-gold">
             {mine.length}
@@ -183,7 +201,7 @@ function RoundBar({ state }: { state: RoomState }) {
       </span>
       <span className="flex items-center gap-1.5">
         <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
-          ● {t('live')} · {state.round.players} {t('players')}
+          ● {t('live')} · {state.room.practice ? t('realPlayers', { n: state.round.players }) : `${state.round.players} ${t('players')}`}
         </span>
         <SoundButton />
       </span>
@@ -304,9 +322,11 @@ function PlayView({ state, mine, layouts }: RoomHook) {
               <span className="text-muted">
                 {t('balls')} <span className="text-gold">{calls.length}/75</span>
               </span>
-              <span className="text-muted">
-                {t('prizePool')} <span className="text-gold">{state.round.prize.birr} ETB</span>
-              </span>
+              {!state.room.practice && (
+                <span className="text-muted">
+                  {t('prizePool')} <span className="text-gold">{state.round.prize.birr} ETB</span>
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -338,7 +358,7 @@ function PlayView({ state, mine, layouts }: RoomHook) {
           <div className="grid grid-cols-2 divide-x divide-line overflow-hidden rounded-xl border border-line bg-panel text-center">
             <div className="px-1 py-1.5">
               <p className="text-[8px] font-bold uppercase tracking-widest text-muted">{t('cards')}</p>
-              <p className="font-display text-sm tabular-nums">{state.round.cardsSold}</p>
+              <p className="font-display text-sm tabular-nums">{state.round.cardsSold + (state.room.samplePlayers ?? 0)}</p>
             </div>
             <div className="px-1 py-1.5">
               <p className="text-[8px] font-bold uppercase tracking-widest text-muted">{t('balls')}</p>
@@ -357,9 +377,11 @@ function PlayView({ state, mine, layouts }: RoomHook) {
             ))}
           </div>
           <BigBall n={last} size={96} />
-          <p className="rounded-full border border-gold/60 bg-gold/10 px-3 py-1 text-xs font-black tabular-nums text-gold">
-            {t('prizePool')}: {state.round.prize.birr} ETB
-          </p>
+          {!state.room.practice && (
+            <p className="rounded-full border border-gold/60 bg-gold/10 px-3 py-1 text-xs font-black tabular-nums text-gold">
+              {t('prizePool')}: {state.round.prize.birr} ETB
+            </p>
+          )}
 
           {playing ? (
             <div className="flex w-full flex-col gap-2">
@@ -447,11 +469,14 @@ function ResultView({ state, mine, now }: RoomHook) {
   if (!result) return null;
   const left = new Date(result.nextRoundAt).getTime() - now();
   const won = myWins.length ? (Number(result.prizePerWinner.minor) * myWins.length) / 100 : 0;
+  const winnerName = (w: Winner) => w.sampleNo ? t('samplePlayer', { n: w.sampleNo }) : w.name;
 
   return (
     <div className="winner-glow flex min-h-[70vh] flex-col items-center gap-4 px-4 py-6">
       {myWins.length > 0 && (
-        <div className="pop w-full rounded-2xl bg-win px-4 py-3 text-center font-display text-lg text-white">{t('youWon', { amount: won.toLocaleString('en-US') })}</div>
+        <div className="pop w-full rounded-2xl bg-win px-4 py-3 text-center font-display text-lg text-white">
+          {state.room.practice ? t('practiceWin') : t('youWon', { amount: won.toLocaleString('en-US') })}
+        </div>
       )}
       {result.winners.length === 1 ? (
         <>
@@ -459,9 +484,9 @@ function ResultView({ state, mine, now }: RoomHook) {
           <p className="font-display text-4xl italic text-gold">BINGO!</p>
           <div className="flex flex-col items-center gap-1 text-center">
             <p className="text-xs uppercase tracking-[0.3em] text-gold/80">— {t('winnerIs')} —</p>
-            <p className="font-display text-3xl uppercase">{result.winners[0].name}</p>
+            <p className="font-display text-3xl uppercase">{winnerName(result.winners[0])}</p>
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted">
-              {t('ticket')} #{result.winners[0].cardNo} · {result.prizePerWinner.birr} ETB
+              {t('ticket')} #{result.winners[0].cardNo}{!state.room.practice && ` · ${result.prizePerWinner.birr} ETB`}
             </p>
           </div>
           <div className="w-full max-w-[290px]">
@@ -485,18 +510,20 @@ function ResultView({ state, mine, now }: RoomHook) {
               <span>{t('totalWinners')}</span>
               <span className="text-lg text-ink">{result.winners.length}</span>
             </div>
-            <div className="flex justify-between py-3 text-xs font-black uppercase tracking-wider text-muted">
-              <span>{t('prizePerWinner')}</span>
-              <span className="font-display text-xl text-gold">{result.prizePerWinner.birr} ETB</span>
-            </div>
+            {!state.room.practice && (
+              <div className="flex justify-between py-3 text-xs font-black uppercase tracking-wider text-muted">
+                <span>{t('prizePerWinner')}</span>
+                <span className="font-display text-xl text-gold">{result.prizePerWinner.birr} ETB</span>
+              </div>
+            )}
           </div>
           <div className={`grid w-full gap-3 ${result.winners.length > 1 ? 'grid-cols-2' : ''}`}>
             {result.winners.map((w) => (
               <div key={w.cardNo} className="flex min-w-0 flex-col gap-1.5">
                 <div className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 ${mine.includes(w.cardNo) ? 'border-gold bg-gold/10' : 'border-line bg-panel'}`}>
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gold text-sm font-black text-gold-ink">{w.name.slice(0, 1).toUpperCase()}</span>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gold text-sm font-black text-gold-ink">{winnerName(w).slice(0, 1).toUpperCase()}</span>
                   <span className="min-w-0 leading-tight">
-                    <span className="block truncate text-sm font-bold">{w.name}</span>
+                    <span className="block truncate text-sm font-bold">{winnerName(w)}</span>
                     <span className="text-[10px] text-gold">
                       {t('ticket')} #{w.cardNo}
                     </span>

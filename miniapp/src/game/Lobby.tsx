@@ -55,7 +55,7 @@ export function Lobby({ onOpen }: { onOpen: (roomId: string) => void }) {
       </div>
       {!data && <p className="py-10 text-center text-sm text-muted">{failed ? t('lobbyOffline') : '…'}</p>}
       {data?.rooms.map((room, i) => (
-        <RoomCard key={room.id} room={room} color={tierColor(Number(room.stake.birr), i)} now={now()} onOpen={() => onOpen(room.id)} />
+        <RoomCard key={room.id} room={room} color={room.practice ? '#2dd4bf' : tierColor(Number(room.stake.birr), i)} now={now()} onOpen={() => onOpen(room.id)} />
       ))}
     </div>
   );
@@ -88,25 +88,34 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
       {/* Room colour on the left edge */}
       <span className="absolute inset-y-0 left-0 w-1" style={{ background: color }} aria-hidden />
 
-      <span className="w-[74px] shrink-0">
-        <span className="flex items-baseline gap-1">
-          <span className="font-display text-2xl leading-none tabular-nums" style={{ color }}>
-            {fmt(room.stake.birr)}
+      {!room.practice && (
+        <span className="w-[74px] shrink-0">
+          <span className="flex items-baseline gap-1">
+            <span className="font-display text-2xl leading-none tabular-nums" style={{ color }}>
+              {fmt(room.stake.birr)}
+            </span>
+            <span className="text-[10px] font-black text-ink">ETB</span>
           </span>
-          <span className="text-[10px] font-black text-ink">ETB</span>
+          <span className="mt-1 block truncate text-[11px] font-bold text-muted">{room.name}</span>
         </span>
-        <span className="mt-1 block truncate text-[11px] font-bold text-muted">{room.name}</span>
-      </span>
+      )}
 
       <span className="min-w-0 flex-1 leading-tight">
-        <span className="block truncate text-[13px] font-bold text-ink">
-          🏆 {fmt(r.prize.birr)} <span className="text-[11px] text-muted">ETB</span>
-          <span className="ml-1.5 text-[11px] font-semibold text-muted">
-            · {t('maxShort')} {fmt(room.maxWin.birr)}
+        {room.practice ? (
+          <>
+            <span className="block font-display text-sm">{t('practiceRoom')}</span>
+            <span className="mt-0.5 block text-[11px] text-muted">{t('practiceNotice', { n: room.samplePlayers })}</span>
+          </>
+        ) : (
+          <span className="block truncate text-[13px] font-bold text-ink">
+            🏆 {fmt(r.prize.birr)} <span className="text-[11px] text-muted">ETB</span>
+            <span className="ml-1.5 text-[11px] font-semibold text-muted">
+              · {t('maxShort')} {fmt(room.maxWin.birr)}
+            </span>
           </span>
-        </span>
+        )}
         <span className="mt-0.5 block truncate text-[11px] text-muted">
-          👤 {r.players} {drawing ? t('playing') : t('waiting')}
+          👤 {room.practice ? t('realPlayers', { n: r.players }) : `${r.players} ${drawing ? t('playing') : t('waiting')}`}
         </span>
         <span className={`mt-0.5 block truncate text-[11px] font-bold ${drawing ? 'text-live' : ''}`} style={drawing ? undefined : { color }}>
           {status}
