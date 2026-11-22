@@ -10,6 +10,7 @@ interface Summary {
   prizesPaid: Money;
   housePlayerStakes: Money;
   housePlayerPrizes: Money;
+  retiredHouseBalance: Money;
   houseRevenue: Money;
   guaranteeTopUps: Money;
   depositsApproved: Money;
@@ -118,6 +119,9 @@ export function Overview({ go }: { go: (page: string) => void }) {
             <Stat label="Players" value={s.players} hint={`${s.newPlayers} new in this period`} />
             <Stat label="Owed to players now" value={<Birr m={s.owedToPlayers} />} hint="keep at least this in your accounts" />
           </div>
+          {s.retiredHouseBalance.minor !== '0' && (
+            <p className="text-xs text-muted">Retired House Cash bankroll: <Birr m={s.retiredHouseBalance} /> (operator funds)</p>
+          )}
           <p className={`text-xs ${booksOk ? 'text-good' : 'text-bad'}`}>
             {booksOk ? '✓ Books balance: every birr is accounted for.' : '✗ Books do not balance.'}
           </p>

@@ -12,7 +12,6 @@ import { IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, M
 import { GameService, HOUSE_CASH_ROOM_ID, MAX_CARD_POOL, PRACTICE_ROOM_ID, isManagedRoom } from './bingo/game.service';
 import { AdminOnly, AppError, CurrentUser, Public, money, type AuthUser } from './common/common';
 import { LedgerService } from './ledger/ledger.service';
-import { HouseBankrollService } from './ledger/house-bankroll.service';
 import { PaymentsService, depositView, withdrawalView } from './payments/payments.service';
 import { PrismaService } from './prisma.service';
 
@@ -71,10 +70,6 @@ class RoomUpdateDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) minCards?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
-class HouseFundingDto {
-  @Matches(/^[1-9]\d{0,6}$/) amountBirr!: string;
-  @Matches(/^[A-Za-z0-9][A-Za-z0-9._/-]{2,79}$/) bankReference!: string;
-}
 
 /** Staff API. Every route needs an ADMIN account. Changes to a room apply from its next round. */
 @AdminOnly()
@@ -87,7 +82,6 @@ export class AdminController {
     private readonly game: GameService,
     private readonly wallet: WalletService,
     private readonly bot: BotService,
-    private readonly houseBankroll: HouseBankrollService,
   ) {}
 
   @Get('summary')
@@ -120,6 +114,7 @@ export class AdminController {
       prizesPaid: money(s.prizeMinor ?? 0n),
       housePlayerStakes: money(s.houseStakeMinor ?? 0n),
       housePlayerPrizes: money(s.housePrizeMinor ?? 0n),
+      retiredHouseBalance: money(await this.ledger.systemBalance(AccountType.HOUSE_BANKROLL)),
       houseRevenue: money(s.houseCutMinor ?? 0n),
       guaranteeTopUps: money(s.topUpMinor ?? 0n),
       depositsApproved: money(deposits._sum.amountMinor ?? 0n),
@@ -180,19 +175,6 @@ export class AdminController {
     return this.prisma.room.findMany({ where: { id: { notIn: [PRACTICE_ROOM_ID, HOUSE_CASH_ROOM_ID] } }, orderBy: { sortOrder: 'asc' } }).then((rows) =>
       rows.map((r) => ({ ...r, stakeMinor: money(r.stakeMinor), guaranteedPrizeMinor: money(r.guaranteedPrizeMinor) })),
     );
-  }
-
-  @Get('house-bankroll')
-  bankroll() {
-    return this.houseBankroll.view();
-  }
-
-  @Post('house-bankroll/funding')
-  @HttpCode(HttpStatus.OK)
-  async fundHouseBankroll(@CurrentUser() staff: AuthUser, @Body() body: HouseFundingDto) {
-    const result = await this.houseBankroll.recordFunding(staff.id, BigInt(body.amountBirr) * 100n, body.bankReference);
-    await this.game.refreshHouseCashAvailability();
-    return result;
   }
 
   @Patch('rooms/:id')

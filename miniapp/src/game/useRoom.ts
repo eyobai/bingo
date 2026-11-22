@@ -104,7 +104,7 @@ export function useRoom(roomId: string, onWallet: (b: Balances) => void) {
 
   /** Takes the card, or gives it back if it is already yours. Throws ApiError for the caller to show. */
   const toggle = useCallback(
-    async (cardNo: number, acceptHousePlayers = false) => {
+    async (cardNo: number) => {
       if (pending.has(cardNo)) return;
       const giveBack = shown.includes(cardNo);
       setPendingFor(cardNo, giveBack ? 'remove' : 'add');
@@ -112,7 +112,7 @@ export function useRoom(roomId: string, onWallet: (b: Balances) => void) {
       try {
         const r = giveBack
           ? await api<{ cards: number[] }>(`/rooms/${roomId}/cards/${cardNo}`, { method: 'DELETE' })
-          : await api<{ cards: number[] }>(`/rooms/${roomId}/cards`, { body: { cardNos: [cardNo], ...(acceptHousePlayers ? { acceptHousePlayers } : {}) } });
+          : await api<{ cards: number[] }>(`/rooms/${roomId}/cards`, { body: { cardNos: [cardNo] } });
         // With several taps in flight the answers can arrive out of order, so an answer is only trusted
         // when it is the last one; otherwise the list is fetched again once all of them are back.
         if (inFlight.current === 1) setMine(r.cards);

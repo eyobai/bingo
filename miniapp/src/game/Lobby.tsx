@@ -55,7 +55,7 @@ export function Lobby({ onOpen }: { onOpen: (roomId: string) => void }) {
       </div>
       {!data && <p className="py-10 text-center text-sm text-muted">{failed ? t('lobbyOffline') : '…'}</p>}
       {data?.rooms.map((room, i) => (
-        <RoomCard key={room.id} room={room} color={room.practice ? '#2dd4bf' : room.houseCash ? '#f6b93b' : tierColor(Number(room.stake.birr), i)} now={now()} onOpen={() => onOpen(room.id)} />
+        <RoomCard key={room.id} room={room} color={room.practice ? '#2dd4bf' : tierColor(Number(room.stake.birr), i)} now={now()} onOpen={() => onOpen(room.id)} />
       ))}
     </div>
   );
@@ -73,7 +73,7 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
   const status = drawing
     ? `● ${t('inPlay')} · ${r.calls}/${BALLS}`
     : selecting
-      ? room.entriesPaused ? t('houseRoomPaused') : `${left}s · ${r.needPlayers > 0 ? t('moreToStart', { n: r.needPlayers }) : t('readyToStart')}`
+      ? `${left}s · ${r.needPlayers > 0 ? t('moreToStart', { n: r.needPlayers }) : t('readyToStart')}`
       : t('nextSoon');
 
   return (
@@ -96,7 +96,7 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
             </span>
             <span className="text-[10px] font-black text-ink">ETB</span>
           </span>
-          <span className="mt-1 block text-[11px] font-bold text-muted">{room.houseCash ? t('houseRoom') : room.name}</span>
+          <span className="mt-1 block truncate text-[11px] font-bold text-muted">{room.name}</span>
         </span>
       )}
 
@@ -114,9 +114,8 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
             </span>
           </span>
         )}
-        {room.houseCash && <span className="mt-0.5 block text-[11px] text-muted">{t('houseNoticeShort', { n: room.samplePlayers })}</span>}
         <span className="mt-0.5 block truncate text-[11px] text-muted">
-          👤 {room.practice || room.houseCash ? t('realPlayers', { n: r.players }) : `${r.players} ${drawing ? t('playing') : t('waiting')}`}
+          👤 {room.practice ? t('realPlayers', { n: r.players }) : `${r.players} ${drawing ? t('playing') : t('waiting')}`}
         </span>
         <span className={`mt-0.5 block truncate text-[11px] font-bold ${drawing ? 'text-live' : ''}`} style={drawing ? undefined : { color }}>
           {status}
@@ -127,7 +126,7 @@ function RoomCard({ room, color, now, onOpen }: { room: LobbyRoom; color: string
         className={`shrink-0 rounded-lg px-3.5 py-2.5 font-display text-sm ${selecting ? 'text-bg' : 'border-2'}`}
         style={selecting ? { background: color } : { borderColor: color, color }}
       >
-        {selecting && !room.entriesPaused ? t('join') : t('watch')}
+        {selecting ? t('join') : t('watch')}
       </span>
 
       {/* Countdown / draw progress along the bottom edge */}
