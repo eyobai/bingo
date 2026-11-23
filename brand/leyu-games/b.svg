@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="#1b2a48"/><stop offset="1" stop-color="#0b1120"/></radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe3a1"/><stop offset=".5" stop-color="#f6b93b"/><stop offset="1" stop-color="#c98a12"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- gold shield-like controller emblem with L -->
+  <g transform="translate(256 214)">
+    <path d="M-112 -70h224a80 80 0 0 1 78 64l16 82a46 46 0 0 1-79 40l-34-36h-186l-34 36a46 46 0 0 1-79-40l16-82a80 80 0 0 1 78-64Z" fill="url(#gold)"/>
+    <text x="0" y="42" text-anchor="middle" font-family="Inter Display" font-weight="900" font-size="132" fill="#0b1120">L</text>
+    <circle cx="-122" cy="-6" r="13" fill="#0b1120"/>
+    <circle cx="122" cy="-6" r="13" fill="#0b1120"/>
+  </g>
+  <text x="256" y="408" text-anchor="middle" font-family="Inter Display" font-weight="900" font-size="64" letter-spacing="4" fill="#ffffff">LEYU</text>
+  <text x="256" y="452" text-anchor="middle" font-family="Inter Display" font-weight="800" font-size="30" letter-spacing="14" fill="#f6b93b">GAMES</text>
+</svg>

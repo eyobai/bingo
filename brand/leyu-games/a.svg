@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd36e"/><stop offset="1" stop-color="#e09a16"/></linearGradient>
+    <radialGradient id="bl" cx="38%" cy="30%" r="80%"><stop offset="0" stop-color="#7fb0ff"/><stop offset="1" stop-color="#1d4fbf"/></radialGradient>
+    <radialGradient id="rd" cx="38%" cy="30%" r="80%"><stop offset="0" stop-color="#ff8f8f"/><stop offset="1" stop-color="#b91c1c"/></radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#g)"/>
+  <!-- controller -->
+  <g transform="translate(256 118) scale(0.82)">
+    <path d="M-78 -40h156a62 62 0 0 1 61 50l13 64a36 36 0 0 1-62 31l-26-28h-168l-26 28a36 36 0 0 1-62-31l13-64a62 62 0 0 1 61-50Z" fill="#0b1120"/>
+    <path d="M-66 -8v40M-86 12h40" stroke="#f6b93b" stroke-width="12" stroke-linecap="round"/>
+    <circle cx="52" cy="0" r="12" fill="url(#rd)"/>
+    <circle cx="80" cy="24" r="12" fill="url(#bl)"/>
+  </g>
+  <text x="256" y="368" text-anchor="middle" font-family="Inter Display" font-weight="900" font-size="150" fill="#0b1120">LEYU</text>
+  <rect x="106" y="396" width="300" height="64" rx="32" fill="#0b1120"/>
+  <text x="256" y="442" text-anchor="middle" font-family="Inter Display" font-weight="900" font-size="42" letter-spacing="12" fill="#f6b93b">GAMES</text>
+</svg>
