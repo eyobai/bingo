@@ -1,0 +1,50 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Archivo;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource/archivo-black/files/archivo-black-latin-400-normal.woff2)}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-ethiopic-wght-normal.woff2);font-weight:100 900}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-latin-wght-normal.woff2);font-weight:100 900;unicode-range:U+0000-00FF}
+*{box-sizing:border-box;margin:0}
+body{width:var(--w);height:var(--h);overflow:hidden;font-family:Ethi,sans-serif;color:#fff;text-align:center;position:relative;background:radial-gradient(ellipse at 50% 38%,#2a3f6b 0,#0b1120 66%)}
+.wrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--gap);padding:0 70px}
+.logo{width:var(--logo);height:var(--logo);border-radius:50%;overflow:hidden;box-shadow:0 0 0 8px #f6b93b44,0 0 80px #f6b93b55}
+.logo img{width:100%;height:100%}
+h1{font-size:var(--h1);font-weight:900;line-height:1.1}
+h1 span{color:#f6b93b}
+.phone{position:relative;width:var(--pw);border-radius:44px;background:#111a2c;border:8px solid #2a3756;padding:22px;box-shadow:0 30px 90px #000c}
+.calls{display:flex;justify-content:center;gap:12px;margin-bottom:16px}
+.calls b{width:var(--ball);height:var(--ball);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:Archivo;font-size:calc(var(--ball)*.36);color:#fff;box-shadow:0 6px 16px #0008}
+.hdr{display:grid;grid-template-columns:repeat(5,1fr);font-family:Archivo;font-size:var(--cell);color:#f6b93b;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}
+.grid div{aspect-ratio:1;border-radius:12px;background:#172238;display:flex;align-items:center;justify-content:center;font-family:Archivo;font-size:var(--cell);color:#cfd7e6}
+.grid .m{background:#f6b93b;color:#241600}.grid .f{background:#19b45a}
+.play{position:absolute;left:50%;top:50%;width:var(--playsz);height:var(--playsz);margin:calc(var(--playsz)/-2) 0 0 calc(var(--playsz)/-2);border-radius:50%;background:#ffffffe6;display:var(--playshow);align-items:center;justify-content:center;box-shadow:0 10px 40px #000a}
+.play:after{content:'';margin-left:10%;border-left:calc(var(--playsz)*.34) solid #0b1120;border-top:calc(var(--playsz)*.21) solid transparent;border-bottom:calc(var(--playsz)*.21) solid transparent}
+.facts{display:flex;flex-wrap:wrap;justify-content:center;gap:14px}
+.facts span{padding:14px 26px;border-radius:999px;background:#ffffff12;border:2px solid #ffffff22;font-size:var(--fact);font-weight:800}
+.facts span b{color:#f6b93b}
+.cta{display:inline-block;padding:22px 52px;border-radius:22px;background:#229ED9;font-size:var(--cta);font-weight:800;box-shadow:0 12px 40px #229ed988}
+.small{position:absolute;left:0;right:0;bottom:var(--sb);font-size:var(--small);color:#c8d1e3;font-weight:700}
+</style></head><body>
+<div class="wrap">
+  <div class="logo"><img src="file:///home/user/bingo/brand/leyu-games/leyu-games-logo.png"></div>
+  <h1>ቢንጎ <span>በቴሌግራም</span> 🎯</h1>
+  <div class="phone">
+    <div class="calls"><b style="background:#2563eb">7</b><b style="background:#db2777">17</b><b style="background:#059669">47</b><b style="background:#ea580c">68</b></div>
+    <div class="hdr"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
+    <div class="grid">
+      <div class="m">7</div><div>21</div><div>38</div><div>49</div><div>66</div>
+      <div>3</div><div class="m">17</div><div>44</div><div>58</div><div>72</div>
+      <div>11</div><div>29</div><div class="f">★</div><div>51</div><div>61</div>
+      <div>5</div><div>24</div><div>36</div><div class="m">47</div><div>70</div>
+      <div>14</div><div>19</div><div>41</div><div>55</div><div class="m">68</div>
+    </div>
+    <div class="play"></div>
+  </div>
+  <div class="facts">
+    <span>ካርቴላ ከ<b>10 ብር</b> ጀምሮ</span>
+    <span>ቴሌብር · ሲቢኢ ብር</span>
+    <span>መስመሩን ቀድሞ የሞላ ያሸንፋል</span>
+  </div>
+  <div class="cta">✈ @LeyuGamesBot</div>
+</div>
+<div class="small">18+ ብቻ · ዕድል ነው · በኃላፊነት ይጫወቱ</div>
+</body></html>
