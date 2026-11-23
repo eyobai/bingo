@@ -1,0 +1,39 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Archivo;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource/archivo-black/files/archivo-black-latin-400-normal.woff2)}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-ethiopic-wght-normal.woff2);font-weight:100 900}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-latin-wght-normal.woff2);font-weight:100 900;unicode-range:U+0000-00FF}
+*{box-sizing:border-box;margin:0}
+body{width:var(--w);height:var(--h);overflow:hidden;font-family:Ethi,sans-serif;color:#fff;background:radial-gradient(ellipse at 50% 40%,#22355c 0,#0b1120 66%);position:relative;text-align:center}
+.wrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--gap)}
+.logo{width:var(--logo);height:var(--logo);border-radius:50%;overflow:hidden;box-shadow:0 0 0 8px #f6b93b44,0 20px 60px #000a}
+.logo img{width:100%;height:100%}
+h1{font-size:var(--h1);font-weight:900;line-height:1.15;padding:0 60px}
+h1 span{color:#f6b93b}
+.phone{width:var(--pw);border-radius:36px;background:#111a2c;border:6px solid #2a3756;padding:20px;box-shadow:0 30px 80px #000c}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.grid div{aspect-ratio:1;border-radius:10px;background:#172238;display:flex;align-items:center;justify-content:center;font-family:Archivo;font-size:var(--cell);color:#cfd7e6}
+.grid .m{background:#f6b93b;color:#241600}
+.grid .f{background:#19b45a;color:#fff}
+.hdr{display:flex;justify-content:space-between;font-family:Archivo;font-size:var(--cell);color:#f6b93b;margin-bottom:12px;padding:0 6px}
+.cta{display:inline-block;padding:20px 44px;border-radius:18px;background:#229ED9;font-size:var(--cta);font-weight:800}
+.small{position:absolute;left:0;right:0;bottom:28px;font-size:24px;color:#8a97b0;font-weight:600}
+.ball{position:absolute;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:Archivo;box-shadow:0 14px 30px #0008}
+.ball i{background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal}
+</style></head><body>
+<div class="ball" style="left:6%;top:9%;width:110px;height:110px;background:radial-gradient(circle at 35% 30%,#7fb0ff,#1d4fbf)"><i style="width:58px;height:58px;color:#1d4fbf;font-size:30px">12</i></div>
+<div class="ball" style="right:7%;top:12%;width:96px;height:96px;background:radial-gradient(circle at 35% 30%,#7ee8a2,#15803d)"><i style="width:50px;height:50px;color:#15803d;font-size:26px">53</i></div>
+<div class="ball" style="right:9%;bottom:16%;width:84px;height:84px;background:radial-gradient(circle at 35% 30%,#ff8f8f,#b91c1c)"><i style="width:44px;height:44px;color:#b91c1c;font-size:22px">27</i></div>
+<div class="wrap">
+  <div class="logo"><img src="file:///home/user/bingo/brand/leyu-games/leyu-games-logo.png"></div>
+  <h1>ቢንጎ በቴሌግራም — <span>አሁን ይጫወቱ!</span></h1>
+  <div class="phone"><div class="hdr"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div><div class="grid">
+    <div class="m">7</div><div>21</div><div>38</div><div>49</div><div>66</div>
+    <div>3</div><div class="m">17</div><div>44</div><div>58</div><div>72</div>
+    <div>11</div><div>29</div><div class="f">★</div><div>51</div><div>61</div>
+    <div>5</div><div>24</div><div>36</div><div class="m">47</div><div>70</div>
+    <div>14</div><div>19</div><div>41</div><div>55</div><div class="m">68</div>
+  </div></div>
+  <div class="cta">✈ @LeyuGamesBot</div>
+</div>
+<div class="small">18+ · በኃላፊነት ይጫወቱ · Play responsibly</div>
+</body></html>
