@@ -21,6 +21,7 @@ export function Messages() {
   const [text, setText] = useState('');
   const [image, setImage] = useState<{ dataUrl: string; name: string } | null>(null);
   const [playButton, setPlayButton] = useState(true);
+  const [dragging, setDragging] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const limit = image ? 1024 : 4000;
@@ -84,16 +85,57 @@ export function Messages() {
           </label>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-muted" htmlFor="msg-image">
-              Picture (optional)
-            </label>
-            <input id="msg-image" type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => pickImage(e.target.files?.[0])} className="text-sm" />
-            {image && (
-              <div className="flex items-start gap-3">
-                <img src={image.dataUrl} alt="Selected picture" className="max-h-48 max-w-full rounded-lg border border-line" />
-                <Button onClick={() => setImage(null)}>Remove</Button>
+            <span className="text-xs font-semibold text-muted">Picture (optional)</span>
+            {image ? (
+              <div className="flex flex-wrap items-start gap-3 rounded-xl border border-line bg-panel-2 p-3">
+                <img src={image.dataUrl} alt="Selected picture" className="max-h-64 max-w-full rounded-lg border border-line" />
+                <div className="flex flex-col gap-2">
+                  <span className="max-w-[220px] truncate text-xs text-muted">{image.name}</span>
+                  <label htmlFor="msg-image" className="cursor-pointer rounded-lg border border-line px-3 py-2 text-center text-sm font-semibold hover:border-gold">
+                    Change picture
+                  </label>
+                  <Button tone="bad" onClick={() => setImage(null)}>
+                    Remove picture
+                  </Button>
+                </div>
               </div>
+            ) : (
+              /* A big, obvious drop zone: click to choose a file, or drag a picture onto it. */
+              <label
+                htmlFor="msg-image"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragging(true);
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                  pickImage(e.dataTransfer.files?.[0]);
+                }}
+                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors ${
+                  dragging ? 'border-gold bg-gold-soft' : 'border-line hover:border-gold hover:bg-gold-soft'
+                }`}
+              >
+                <svg viewBox="0 0 24 24" className="h-10 w-10 text-gold" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="14" rx="2.5" />
+                  <circle cx="8.5" cy="10" r="1.8" />
+                  <path d="m21 16-5-5-8 8" strokeLinejoin="round" />
+                </svg>
+                <span className="text-sm font-bold">📷 Add a picture</span>
+                <span className="text-xs text-muted">Click to choose, or drag a picture here · JPG, PNG or WebP, up to 5 MB</span>
+              </label>
             )}
+            <input
+              id="msg-image"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => {
+                pickImage(e.target.files?.[0]);
+                e.target.value = ''; // lets the same file be chosen again after removing it
+              }}
+              className="sr-only"
+            />
           </div>
 
           <label className="flex items-center gap-2 text-sm font-semibold" htmlFor="msg-play">
