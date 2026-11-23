@@ -1,0 +1,44 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Archivo;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource/archivo-black/files/archivo-black-latin-400-normal.woff2)}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-ethiopic-wght-normal.woff2);font-weight:100 900}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-latin-wght-normal.woff2);font-weight:100 900;unicode-range:U+0000-00FF}
+*{box-sizing:border-box;margin:0}
+body{width:var(--w);height:var(--h);overflow:hidden;font-family:Ethi,sans-serif;color:#fff;text-align:center;position:relative;
+ background:radial-gradient(circle at 20% 15%,#ff4fa3 0,transparent 40%),radial-gradient(circle at 85% 85%,#18c6c0 0,transparent 42%),linear-gradient(160deg,#5b21b6,#3b0f7a 55%,#1e0a4a)}
+.conf{position:absolute;width:14px;height:26px;border-radius:4px;opacity:.9}
+.wrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--gap)}
+.brand{font-family:Archivo;font-size:var(--brand);line-height:.95;letter-spacing:2px;text-shadow:0 8px 0 #2a0b5e}
+.brand .b{color:#ffd23f}.brand .f{color:#ff4fa3;display:block}
+.free{display:inline-block;padding:10px 34px;border-radius:999px;background:#18c6c0;color:#062b2a;font-family:Ethi;font-weight:900;font-size:var(--pill)}
+h1{font-size:var(--h1);font-weight:900;line-height:1.2;padding:0 70px}
+h1 span{color:#ffd23f}
+.card{width:var(--cw);border-radius:28px;background:#fff;padding:16px;box-shadow:0 26px 70px #0009;transform:rotate(-3deg)}
+.hdr{display:grid;grid-template-columns:repeat(5,1fr);font-family:Archivo;font-size:var(--cell);margin-bottom:8px}
+.hdr span:nth-child(1){color:#2563eb}.hdr span:nth-child(2){color:#db2777}.hdr span:nth-child(3){color:#7c3aed}.hdr span:nth-child(4){color:#059669}.hdr span:nth-child(5){color:#ea580c}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+.grid div{aspect-ratio:1;border-radius:10px;background:#f1edfb;display:flex;align-items:center;justify-content:center;font-family:Archivo;font-size:var(--cell);color:#3b0f7a}
+.grid .m{background:#ff4fa3;color:#fff}.grid .s{background:#ffd23f;color:#3b0f7a}
+.cta{display:inline-block;padding:18px 42px;border-radius:18px;background:#229ED9;font-size:var(--cta);font-weight:800;box-shadow:0 10px 30px #0006}
+.small{position:absolute;left:0;right:0;bottom:26px;font-size:var(--small);color:#e9ddff;font-weight:600;padding:0 40px}
+</style></head><body>
+<div class="conf" style="left:8%;top:12%;background:#ffd23f;transform:rotate(25deg)"></div>
+<div class="conf" style="left:18%;top:28%;background:#18c6c0;transform:rotate(-30deg)"></div>
+<div class="conf" style="right:12%;top:10%;background:#ff4fa3;transform:rotate(40deg)"></div>
+<div class="conf" style="right:20%;top:30%;background:#ffd23f;transform:rotate(-15deg)"></div>
+<div class="conf" style="left:10%;bottom:22%;background:#ff4fa3;transform:rotate(60deg)"></div>
+<div class="conf" style="right:9%;bottom:26%;background:#18c6c0;transform:rotate(-50deg)"></div>
+<div class="wrap">
+  <div class="brand"><span class="b">BINGO</span><span class="f">FIESTA</span></div>
+  <div class="free">100% ነፃ · FREE</div>
+  <h1>ነፃ ቢንጎ ይጫወቱ — <span>የገንዘብ ሽልማት!</span></h1>
+  <div class="card"><div class="hdr"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div><div class="grid">
+    <div class="m">4</div><div>22</div><div>35</div><div>50</div><div>63</div>
+    <div>9</div><div class="m">18</div><div>40</div><div>57</div><div>71</div>
+    <div>13</div><div>26</div><div class="s">★</div><div>48</div><div>69</div>
+    <div>2</div><div>30</div><div>44</div><div class="m">52</div><div>74</div>
+    <div>15</div><div>16</div><div>33</div><div>59</div><div class="m">66</div>
+  </div></div>
+  <div class="cta">✈ @BingoFiestaBot</div>
+</div>
+<div class="small">ነፃ ነው — ምንም ክፍያ የለም · No purchase needed · Prize rules in the bot · 18+</div>
+</body></html>
