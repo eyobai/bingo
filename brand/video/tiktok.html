@@ -1,0 +1,87 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Archivo;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource/archivo-black/files/archivo-black-latin-400-normal.woff2)}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-ethiopic-wght-normal.woff2);font-weight:100 900}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-latin-wght-normal.woff2);font-weight:100 900;unicode-range:U+0000-00FF}
+*{box-sizing:border-box;margin:0}
+body{width:1080px;height:1920px;overflow:hidden;font-family:Ethi,sans-serif;color:#fff;background:radial-gradient(ellipse at 50% 38%,#22355c 0,#0b1120 66%);position:relative;text-align:center}
+.abs{position:absolute;left:0;right:0}
+#logo{top:250px;margin:0 auto;width:360px;height:360px;left:50%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 10px #f6b93b55,0 0 120px #f6b93b66}
+#logo img{width:100%;height:100%}
+#title{top:660px;font-size:96px;font-weight:900}
+#title span{color:#f6b93b}
+#call{top:180px;left:50%;width:300px;height:300px;margin-left:-150px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 30px 80px #000a}
+#call i{width:170px;height:170px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-style:normal;font-family:Archivo;line-height:1}
+#call i b{font-size:44px}#call i em{font-style:normal;font-size:84px}
+#card{top:560px;left:50%;width:760px;margin-left:-380px;border-radius:40px;background:#111a2c;border:6px solid #2a3756;padding:26px;box-shadow:0 30px 90px #000c}
+.hdr{display:grid;grid-template-columns:repeat(5,1fr);font-family:Archivo;font-size:46px;color:#f6b93b;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.grid div{aspect-ratio:1;border-radius:18px;background:#172238;display:flex;align-items:center;justify-content:center;font-family:Archivo;font-size:44px;color:#cfd7e6}
+.grid div.m{background:#f6b93b;color:#241600}
+.grid div.f{background:#19b45a;color:#fff}
+.grid div.w{background:#19b45a;color:#fff;box-shadow:0 0 30px #19b45acc}
+#bingo{top:880px;font-family:Archivo;font-size:220px;color:#f6b93b;text-shadow:0 10px 0 #7a4f00,0 0 60px #f6b93b}
+#cta{top:1300px}
+#cta .btn{display:inline-block;padding:34px 64px;border-radius:30px;background:#229ED9;font-size:70px;font-weight:800;box-shadow:0 14px 50px #229ed988}
+#tag{top:1500px;font-size:64px;font-weight:800}
+#tag span{color:#f6b93b}
+#legal{bottom:70px;font-size:36px;color:#9aa6bd;font-weight:600}
+.conf{position:absolute;width:22px;height:40px;border-radius:6px}
+</style></head><body>
+<div id="logo" class="abs" style="position:absolute"><img src="file:///home/user/bingo/brand/leyu-games/leyu-games-logo.png"></div>
+<div id="title" class="abs">ቢንጎ <span>በቴሌግራም</span></div>
+<div id="call" style="position:absolute"><i><b id="cl">B</b><em id="cn">7</em></i></div>
+<div id="card" style="position:absolute"><div class="hdr"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div><div class="grid" id="grid"></div></div>
+<div id="bingo" class="abs">BINGO!</div>
+<div id="cta" class="abs"><div class="btn">✈ @LeyuGamesBot</div></div>
+<div id="tag" class="abs">ይጫወቱ · ይዝናኑ · <span>Leyu Games</span></div>
+<div id="legal" class="abs">18+ · በኃላፊነት ይጫወቱ · Play responsibly</div>
+<div id="confs"></div>
+<script>
+const nums=[7,21,38,49,66, 3,17,44,58,72, 11,29,0,51,61, 5,24,36,47,70, 14,19,41,55,68];
+const grid=document.getElementById('grid');
+nums.forEach((n,i)=>{const d=document.createElement('div');d.textContent=n?n:'★';if(!n)d.className='f';grid.appendChild(d)});
+const cells=[...grid.children];
+// Calls: diagonal line 7,17,(free),47,68 completes at the last call; plus misses in between.
+const calls=[[7,'B','#2563eb'],[33,'N','#7c3aed'],[17,'I','#db2777'],[47,'G','#059669'],[68,'O','#ea580c']];
+const CALL_T0=3.4, CALL_DT=0.75; // seconds
+const confs=document.getElementById('confs');
+const cs=[];for(let i=0;i<40;i++){const c=document.createElement('div');c.className='conf';c.style.background=['#f6b93b','#19b45a','#229ED9','#ef4444','#a855f7'][i%5];confs.appendChild(c);cs.push({el:c,x:Math.random()*1080,v:300+Math.random()*500,r:Math.random()*360,s:(Math.random()-.5)*600,d:Math.random()*0.6});}
+const clamp=(x)=>Math.max(0,Math.min(1,x));
+const ease=(x)=>1-Math.pow(1-clamp(x),3);
+const pop=(x)=>{x=clamp(x);return x<1?1.7*Math.pow(x,1)-0.7*Math.pow(x,2)+0.0*x:1}; // overshoot-ish
+function set(el,o,tr){el.style.opacity=o;el.style.transform=tr||'';}
+window.render=(t)=>{
+  const logo=document.getElementById('logo'),title=document.getElementById('title');
+  // Scene 1: 0-3.2s logo + title
+  const s1=t<3.2;
+  const lp=ease(t/0.6); set(logo, s1?lp:clamp(1-(t-3.2)/0.3), 'translateX(-50%) scale('+(0.4+0.6*lp+(s1?0.03*Math.sin(t*4):0))+')');
+  set(title, s1?ease((t-0.6)/0.5):clamp(1-(t-3.2)/0.3), 'translateY('+(40*(1-ease((t-0.6)/0.5)))+'px)');
+  // Scene 2: 3.2-7.6 card + calls
+  const card=document.getElementById('card'), call=document.getElementById('call');
+  const cIn=ease((t-3.1)/0.4), cOut=t>7.6?clamp(1-(t-7.6)/0.35):1;
+  set(card, cIn*cOut, 'scale('+(0.85+0.15*cIn)+')');
+  let idx=Math.floor((t-CALL_T0)/CALL_DT); idx=Math.min(idx,calls.length-1);
+  const marked=new Set();
+  for(let k=0;k<=idx&&k<calls.length;k++){ if(t>=CALL_T0+k*CALL_DT+0.35) marked.add(calls[k][0]); }
+  if(idx>=0 && t<7.6){
+    const [n,l,c]=calls[idx]; const lt=(t-CALL_T0-idx*CALL_DT)/0.3;
+    document.getElementById('cn').textContent=n; const cl=document.getElementById('cl'); cl.textContent=l; cl.style.color=c; document.getElementById('cn').style.color=c;
+    call.style.background='radial-gradient(circle at 35% 30%,#ffffff99,'+c+' 55%)';
+    set(call, cOut, 'scale('+(0.5+0.5*ease(lt))+') rotate('+(-30+30*ease(lt))+'deg)');
+  } else set(call,0);
+  const win=t>=CALL_T0+4*CALL_DT+0.35;
+  const diag=[0,6,12,18,24];
+  cells.forEach((d,i)=>{const n=nums[i]; if(!n) return; d.className = win&&diag.includes(i)?'w':(marked.has(n)?'m':''); });
+  // BINGO burst 6.6-7.8
+  const b=document.getElementById('bingo'); const bt=(t-6.75)/0.35;
+  set(b, t<6.75?0:(t<7.9?1:clamp(1-(t-7.9)/0.3)), 'scale('+(t<6.75?0.3:0.3+0.8*ease(bt)+0.04*Math.sin(t*20))+')');
+  cs.forEach(c=>{const ct=t-6.75-c.d; if(ct<0||t>9.0){c.el.style.opacity=0;return;} c.el.style.opacity=1; c.el.style.left=c.x+'px'; c.el.style.top=(600+c.v*ct)+'px'; c.el.style.transform='rotate('+(c.r+c.s*ct)+'deg)';});
+  // Scene 3: 7.9-10 CTA
+  const e=ease((t-8.0)/0.5);
+  const logo2=t>=7.9; if(logo2){ set(logo, e, 'translateX(-50%) scale('+(0.4+0.6*e)+')'); logo.style.top='420px'; } else logo.style.top='250px';
+  set(document.getElementById('cta'), ease((t-8.3)/0.4), 'translateY('+(60*(1-ease((t-8.3)/0.4)))+'px) scale('+(1+0.04*Math.sin(t*6)*(t>8.7?1:0))+')');
+  set(document.getElementById('tag'), ease((t-8.6)/0.4));
+  if(t>=7.9){ title.style.opacity=0; }
+};
+render(0);
+</script></body></html>
