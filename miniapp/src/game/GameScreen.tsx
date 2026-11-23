@@ -93,7 +93,7 @@ function Countdown({ ms }: { ms: number }) {
   );
 }
 
-function PlayerCount({ state, totalOnly = false }: { state: RoomState; totalOnly?: boolean }) {
+function PlayerCount({ state }: { state: RoomState; totalOnly?: boolean }) {
   const { t } = useI18n();
   const bots = state.round.automated ?? 0;
   if (state.room.practice || state.room.houseCash) return <>{t('realPlayers', { n: state.round.players })}</>;
