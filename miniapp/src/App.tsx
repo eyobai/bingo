@@ -4,6 +4,7 @@ import { GameScreen } from './game/GameScreen';
 import { Lobby } from './game/Lobby';
 import { ConnectionBanner } from './Connection';
 import { Header } from './Header';
+import { GameIcon, ProfileIcon, WalletIcon } from './TabIcons';
 import { I18nProvider, useI18n, type Lang } from './i18n';
 import { ProfileView } from './ProfileView';
 import { telegram } from './telegram';
@@ -121,13 +122,13 @@ function Shell({ user }: { user: User }) {
         <div className="mx-auto grid max-w-[520px] grid-cols-3">
           {(
             [
-              ['game', '◉', t('game')],
-              ['wallet', '▣', t('wallet')],
-              ['profile', '☺', t('profile')],
+              ['game', GameIcon, t('game')],
+              ['wallet', WalletIcon, t('wallet')],
+              ['profile', ProfileIcon, t('profile')],
             ] as const
-          ).map(([k, icon, label]) => (
+          ).map(([k, Icon, label]) => (
             <button key={k} type="button" onClick={() => (k === 'game' && tab === 'game' ? setRoomId(null) : setTab(k))} aria-current={tab === k} className={`flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-bold ${tab === k ? 'text-gold' : 'text-muted'}`}>
-              <span className="text-lg leading-none">{icon}</span>
+              <Icon active={tab === k} />
               {label}
             </button>
           ))}
