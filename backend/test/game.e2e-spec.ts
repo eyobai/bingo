@@ -188,12 +188,23 @@ describe('bingo platform (integration)', () => {
     await http.post('/api/auth/staff/code').send({ telegramId: '100' }).expect(200);
     expect(lastDm).toBe('');
 
-    const list = (await http.get('/api/admin/players?q=ali').set(auth(staff)).expect(200)).body;
+    const found = (await http.get('/api/admin/players?q=ali').set(auth(staff)).expect(200)).body;
+    expect(found.total).toBeGreaterThanOrEqual(1);
+    const list = found.players;
     expect(list.map((p: any) => p.name)).toContain('Alice');
     const alice = list.find((p: any) => p.name === 'Alice');
+    expect(alice).toMatchObject({ cards: 4, deposits: expect.any(Number) });
+    // Filters and headline counts
+    const registered = (await http.get('/api/admin/players?filter=phone').set(auth(staff)).expect(200)).body.players;
+    expect(registered.every((p: any) => p.phone)).toBe(true);
+    const counts = (await http.get('/api/admin/players-stats').set(auth(staff)).expect(200)).body;
+    expect(counts.all).toBeGreaterThanOrEqual(counts.withPhone);
 
     const before = (await http.get(`/api/admin/players/${alice.id}`).set(auth(staff)).expect(200)).body;
     expect(before.stats.cardsBought).toBe(4);
+    expect(before).toMatchObject({ phone: expect.any(String), referralCode: expect.any(String) });
+    expect(before.games.length).toBeGreaterThan(0);
+    expect(before.stats.roundsPlayed).toBe(before.games.length);
     const after = (await http.post(`/api/admin/players/${alice.id}/adjust`).set(auth(staff)).send({ wallet: 'main', amountBirr: '50', reason: 'Goodwill' }).expect(200)).body;
     expect(BigInt(after.main.minor) - BigInt(before.balances.main.minor)).toBe(5000n);
     const tooMuch = await http.post(`/api/admin/players/${alice.id}/adjust`).set(auth(staff)).send({ wallet: 'play', amountBirr: '-99999', reason: 'Test' }).expect(422);

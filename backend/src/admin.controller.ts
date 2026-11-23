@@ -307,73 +307,202 @@ export class AdminController {
     }));
   }
 
+  /** Headline counts for the Players page. */
+  @Get('players-stats')
+  async playersStats() {
+    const day = 86_400_000;
+    const [all, withPhone, depositors, blocked, staff, new1, new7, active7] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.user.count({ where: { phone: { not: null } } }),
+      this.prisma.user.count({ where: { deposits: { some: { status: DepositStatus.APPROVED } } } }),
+      this.prisma.user.count({ where: { isBlocked: true } }),
+      this.prisma.user.count({ where: { role: 'ADMIN' } }),
+      this.prisma.user.count({ where: { createdAt: { gte: new Date(Date.now() - day) } } }),
+      this.prisma.user.count({ where: { createdAt: { gte: new Date(Date.now() - 7 * day) } } }),
+      this.prisma.user.count({ where: { updatedAt: { gte: new Date(Date.now() - 7 * day) } } }),
+    ]);
+    return { all, withPhone, depositors, blocked, staff, new1, new7, active7 };
+  }
+
   @Get('players')
-  async players(@Query('q') q = '', @Query('filter') filter = '') {
+  async players(@Query('q') q = '', @Query('filter') filter = '', @Query('sort') sort = 'newest') {
     const term = q.trim();
+    const week = new Date(Date.now() - 7 * 86_400_000);
+    const filters: Record<string, Prisma.UserWhereInput> = {
+      blocked: { isBlocked: true },
+      staff: { role: 'ADMIN' },
+      phone: { phone: { not: null } },
+      nophone: { phone: null },
+      depositors: { deposits: { some: { status: DepositStatus.APPROVED } } },
+      nodeposit: { phone: { not: null }, deposits: { none: { status: DepositStatus.APPROVED } } },
+      invited: { referredById: { not: null } },
+      active7: { updatedAt: { gte: week } },
+      new7: { createdAt: { gte: week } },
+    };
+    const digits = term.replace(/[^\d]/g, '');
     const where: Prisma.UserWhereInput = {
-      ...(filter === 'blocked' ? { isBlocked: true } : filter === 'staff' ? { role: 'ADMIN' } : {}),
+      ...(filters[filter] ?? {}),
       ...(term
         ? {
             OR: [
               { firstName: { contains: term, mode: 'insensitive' } },
+              { lastName: { contains: term, mode: 'insensitive' } },
               { username: { contains: term.replace(/^@/, ''), mode: 'insensitive' } },
+              ...(digits.length >= 4 ? [{ phone: { contains: digits.replace(/^0/, '') } }] : []),
               ...(/^\d{1,15}$/.test(term) ? [{ telegramId: BigInt(term) }] : []),
             ],
           }
         : {}),
     };
-    const users = await this.prisma.user.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100, include: { accounts: true } });
-    return users.map((u) => {
-      const bal = (t: AccountType) => u.accounts.find((a) => a.type === t)?.balanceMinor ?? 0n;
-      return {
-        id: u.id,
-        telegramId: u.telegramId.toString(),
-        name: [u.firstName, u.lastName].filter(Boolean).join(' '),
-        username: u.username,
-        role: u.role,
-        isBlocked: u.isBlocked,
-        joinedAt: u.createdAt,
-        main: money(bal(AccountType.USER_MAIN)),
-        play: money(bal(AccountType.USER_PLAY)),
-      };
-    });
+    const orderBy: Prisma.UserOrderByWithRelationInput =
+      sort === 'oldest' ? { createdAt: 'asc' } : sort === 'active' ? { updatedAt: 'desc' } : { createdAt: 'desc' };
+    const [total, users] = await Promise.all([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({ where, orderBy, take: 200, include: { accounts: true } }),
+    ]);
+    const ids = users.map((u) => u.id);
+    // Per-player totals for the rows on this page, in a few grouped queries.
+    const [deps, wds, cards, wins] = await Promise.all([
+      this.prisma.deposit.groupBy({ by: ['userId'], where: { userId: { in: ids }, status: DepositStatus.APPROVED }, _sum: { amountMinor: true }, _count: true }),
+      this.prisma.withdrawal.groupBy({ by: ['userId'], where: { userId: { in: ids }, status: WithdrawalStatus.PAID }, _sum: { amountMinor: true } }),
+      this.prisma.card.groupBy({ by: ['userId'], where: { userId: { in: ids }, round: { roomId: { not: PRACTICE_ROOM_ID } } }, _count: true }),
+      this.prisma.winner.groupBy({ by: ['userId'], where: { userId: { in: ids }, round: { roomId: { not: PRACTICE_ROOM_ID } } }, _count: true, _sum: { prizeMinor: true } }),
+    ]);
+    const by = <T extends { userId: string }>(rows: T[]) => new Map(rows.map((r) => [r.userId, r]));
+    const [depBy, wdBy, cardBy, winBy] = [by(deps), by(wds), by(cards), by(wins)];
+    return {
+      total,
+      shown: users.length,
+      players: users.map((u) => {
+        const bal = (t: AccountType) => u.accounts.find((a) => a.type === t)?.balanceMinor ?? 0n;
+        return {
+          id: u.id,
+          telegramId: u.telegramId.toString(),
+          name: [u.firstName, u.lastName].filter(Boolean).join(' '),
+          username: u.username,
+          phone: u.phone,
+          language: u.language,
+          role: u.role,
+          isBlocked: u.isBlocked,
+          invited: Boolean(u.referredById),
+          joinedAt: u.createdAt,
+          lastActive: u.updatedAt,
+          main: money(bal(AccountType.USER_MAIN)),
+          play: money(bal(AccountType.USER_PLAY)),
+          deposited: money(depBy.get(u.id)?._sum.amountMinor ?? 0n),
+          deposits: depBy.get(u.id)?._count ?? 0,
+          withdrawn: money(wdBy.get(u.id)?._sum.amountMinor ?? 0n),
+          cards: cardBy.get(u.id)?._count ?? 0,
+          wins: winBy.get(u.id)?._count ?? 0,
+          prizes: money(winBy.get(u.id)?._sum.prizeMinor ?? 0n),
+        };
+      }),
+    };
   }
 
   @Get('players/:id')
   async player(@Param('id') id: string) {
-    const u = await this.prisma.user.findUnique({ where: { id }, include: { referredBy: { select: { firstName: true } } } });
+    const u = await this.prisma.user.findUnique({
+      where: { id },
+      include: { referredBy: { select: { id: true, firstName: true, lastName: true, username: true } } },
+    });
     if (!u) throw new AppError(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'Player not found.');
-    const [balances, history, deposits, withdrawals, cards, wins, invited] = await Promise.all([
+    const notPractice = { round: { roomId: { not: PRACTICE_ROOM_ID } } };
+    const [balances, history, deposits, withdrawals, cards, wins, invitedList, invitedCount, promos, recentCards, depAgg, wdAgg, roundsPlayed] = await Promise.all([
       this.wallet.balances(id),
-      this.wallet.history(id, 50),
-      this.prisma.deposit.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 20 }),
-      this.prisma.withdrawal.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 20 }),
-      this.prisma.card.aggregate({ where: { userId: id, round: { roomId: { not: PRACTICE_ROOM_ID } } }, _count: true, _sum: { paidMainMinor: true, paidPlayMinor: true } }),
-      this.prisma.winner.aggregate({ where: { userId: id, round: { roomId: { not: PRACTICE_ROOM_ID } } }, _count: true, _sum: { prizeMinor: true } }),
+      this.wallet.history(id, 100),
+      this.prisma.deposit.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 50 }),
+      this.prisma.withdrawal.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 50 }),
+      this.prisma.card.aggregate({ where: { userId: id, ...notPractice }, _count: true, _sum: { paidMainMinor: true, paidPlayMinor: true } }),
+      this.prisma.winner.aggregate({ where: { userId: id, ...notPractice }, _count: true, _sum: { prizeMinor: true } }),
+      this.prisma.user.findMany({
+        where: { referredById: id },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: { id: true, firstName: true, lastName: true, username: true, phone: true, createdAt: true, deposits: { where: { status: DepositStatus.APPROVED }, select: { amountMinor: true } } },
+      }),
       this.prisma.user.count({ where: { referredById: id } }),
+      this.prisma.promoRedemption.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 50, include: { promo: { select: { code: true } } } }),
+      this.prisma.card.findMany({
+        where: { userId: id, ...notPractice },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        select: { cardNo: true, paidMainMinor: true, paidPlayMinor: true, round: { select: { id: true, number: true, status: true, createdAt: true, room: { select: { name: true, stakeMinor: true } } } } },
+      }),
+      this.prisma.deposit.aggregate({ where: { userId: id, status: DepositStatus.APPROVED }, _sum: { amountMinor: true }, _count: true, _min: { createdAt: true }, _max: { createdAt: true } }),
+      this.prisma.withdrawal.aggregate({ where: { userId: id, status: WithdrawalStatus.PAID }, _sum: { amountMinor: true }, _count: true }),
+      this.prisma.card.groupBy({ by: ['roundId'], where: { userId: id, ...notPractice } }).then((r) => r.length),
     ]);
-    const deposited = deposits.filter((d) => d.status === 'APPROVED').reduce((s, d) => s + d.amountMinor, 0n);
-    const withdrawn = withdrawals.filter((w) => w.status === 'PAID').reduce((s, w) => s + w.amountMinor, 0n);
+    // Recent games: the player's cards grouped by round, with what they paid and won.
+    const roundIds = [...new Set(recentCards.map((c) => c.round.id))].slice(0, 30);
+    const roundWins = await this.prisma.winner.findMany({ where: { userId: id, roundId: { in: roundIds } }, select: { roundId: true, prizeMinor: true } });
+    const games = roundIds.map((rid) => {
+      const mine = recentCards.filter((c) => c.round.id === rid);
+      const r = mine[0].round;
+      const won = roundWins.filter((w) => w.roundId === rid).reduce((s, w) => s + w.prizeMinor, 0n);
+      return {
+        round: r.number,
+        room: r.room.name,
+        stake: money(r.room.stakeMinor),
+        status: r.status,
+        at: r.createdAt,
+        cards: mine.map((c) => c.cardNo).sort((a, b) => a - b),
+        paid: money(mine.reduce((s, c) => s + c.paidMainMinor + c.paidPlayMinor, 0n)),
+        won: money(won),
+      };
+    });
+    const spent = (cards._sum.paidMainMinor ?? 0n) + (cards._sum.paidPlayMinor ?? 0n);
+    const prizes = wins._sum.prizeMinor ?? 0n;
+    const deposited = depAgg._sum.amountMinor ?? 0n;
+    const withdrawn = wdAgg._sum.amountMinor ?? 0n;
+    const name = (x: { firstName: string; lastName: string | null }) => [x.firstName, x.lastName].filter(Boolean).join(' ');
     return {
       id: u.id,
       telegramId: u.telegramId.toString(),
-      name: [u.firstName, u.lastName].filter(Boolean).join(' '),
+      name: name(u),
+      firstName: u.firstName,
+      lastName: u.lastName,
       username: u.username,
+      phone: u.phone,
       role: u.role,
       isBlocked: u.isBlocked,
       joinedAt: u.createdAt,
+      lastActive: u.updatedAt,
       language: u.language,
-      invitedBy: u.referredBy?.firstName ?? null,
-      invited,
+      referralCode: u.referralCode,
+      referralRewardPaid: u.referralPaid,
+      invitedBy: u.referredBy ? { id: u.referredBy.id, name: name(u.referredBy), username: u.referredBy.username } : null,
+      invited: invitedCount,
+      invitedList: invitedList.map((f) => ({
+        id: f.id,
+        name: name(f),
+        username: f.username,
+        registered: Boolean(f.phone),
+        joinedAt: f.createdAt,
+        deposited: money(f.deposits.reduce((s, d) => s + d.amountMinor, 0n)),
+      })),
       balances,
       stats: {
         cardsBought: cards._count,
-        spentOnCards: money((cards._sum.paidMainMinor ?? 0n) + (cards._sum.paidPlayMinor ?? 0n)),
+        spentOnCards: money(spent),
+        spentFromMain: money(cards._sum.paidMainMinor ?? 0n),
+        spentFromBonus: money(cards._sum.paidPlayMinor ?? 0n),
         wins: wins._count,
-        prizesWon: money(wins._sum.prizeMinor ?? 0n),
+        prizesWon: money(prizes),
+        resultFromGames: money(prizes - spent),
+        roundsPlayed,
         deposited: money(deposited),
+        depositCount: depAgg._count,
+        firstDepositAt: depAgg._min.createdAt,
+        lastDepositAt: depAgg._max.createdAt,
         withdrawn: money(withdrawn),
+        withdrawalCount: wdAgg._count,
+        pendingDeposits: deposits.filter((d) => d.status === 'PENDING').length,
+        pendingWithdrawals: withdrawals.filter((w) => w.status === 'PENDING').length,
+        promoCodesUsed: promos.length,
       },
+      games,
+      promos: promos.map((r) => ({ code: r.promo.code, amount: money(r.amountMinor), at: r.createdAt })),
       history,
       deposits: deposits.map(depositView),
       withdrawals: withdrawals.map(withdrawalView),
