@@ -100,7 +100,7 @@ function PlayerCount({ state, totalOnly = false }: { state: RoomState; totalOnly
   return (
     <>
       {state.round.players + bots} {t('players')}
-      {!totalOnly && bots > 0 && <> ({t('automatedCount', { n: bots })})</>}
+      {/* {!totalOnly && bots > 0 && <> ({t('automatedCount', { n: bots })})</>} */}
     </>
   );
 }
