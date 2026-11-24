@@ -1,0 +1,51 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Archivo;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource/archivo-black/files/archivo-black-latin-400-normal.woff2)}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-ethiopic-wght-normal.woff2);font-weight:100 900}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-latin-wght-normal.woff2);font-weight:100 900;unicode-range:U+0000-00FF}
+*{box-sizing:border-box;margin:0}
+body{width:1080px;height:1680px;overflow:hidden;font-family:Ethi,sans-serif;color:#fff;background:radial-gradient(ellipse at 50% 10%,#2a3f6b 0,#0b1120 60%);padding:70px 64px}
+.top{display:flex;align-items:center;gap:26px}
+.logo{width:120px;height:120px;border-radius:50%;overflow:hidden;flex:0 0 auto;box-shadow:0 0 0 5px #f6b93b44}
+.logo img{width:100%;height:100%}
+h1{font-size:68px;font-weight:900;line-height:1.1}
+h1 span{color:#f6b93b}
+.steps{margin-top:50px;display:flex;flex-direction:column;gap:22px}
+.step{display:flex;gap:24px;align-items:flex-start;padding:26px 28px;border-radius:28px;background:#ffffff0d;border:2px solid #ffffff1a}
+.num{flex:0 0 76px;height:76px;border-radius:22px;background:#f6b93b;color:#0b1120;display:flex;align-items:center;justify-content:center;font-family:Archivo;font-size:40px}
+.txt{font-size:38px;font-weight:700;line-height:1.35;padding-top:6px}
+.txt b{color:#f6b93b;font-weight:900}
+.chip{display:inline-block;margin-top:12px;padding:8px 20px;border-radius:14px;background:#f6b93b;color:#0b1120;font-weight:900;font-size:32px}
+.pay{display:flex;gap:14px;margin-top:12px}
+.pay span{padding:8px 20px;border-radius:14px;font-weight:900;font-size:30px}
+.sms{margin-top:16px;background:#e9edf3;color:#1b2433;border-radius:22px 22px 22px 6px;padding:18px 22px;font-family:Inter,sans-serif;font-size:24px;line-height:1.4;position:relative;border:3px dashed #f6b93b}
+.sms em{font-style:normal;background:#fde68a;font-weight:800;padding:0 4px;border-radius:4px}
+.sms .copy{position:absolute;right:-14px;top:-20px;background:#229ED9;color:#fff;font-family:Ethi;font-weight:900;font-size:24px;padding:6px 16px;border-radius:12px;box-shadow:0 6px 16px #0006}
+.step.done{background:#19b45a22;border-color:#19b45a88}
+.step.done .num{background:#19b45a;color:#fff}
+.warn{margin-top:34px;padding:28px 30px;border-radius:28px;background:#f0645a1f;border:3px solid #f0645a}
+.warn h2{font-size:40px;font-weight:900;color:#ffb4ae;margin-bottom:14px}
+.warn li{font-size:32px;font-weight:700;line-height:1.45;margin-left:34px}
+.warn li b{color:#fff;text-decoration:underline;text-decoration-color:#f6b93b;text-decoration-thickness:4px}
+</style></head><body>
+<div class="top">
+  <div class="logo"><img src="file:///home/user/bingo/brand/leyu-games/leyu-games-logo.png"></div>
+  <h1>💰 ገንዘብ እንዴት <span>ያስገባሉ?</span></h1>
+</div>
+<div class="steps">
+  <div class="step"><div class="num">1</div><div class="txt">በቦቱ ውስጥ የሚለውን ይጫኑ<br><span class="chip">💰 ገንዘብ አስገባ</span></div></div>
+  <div class="step"><div class="num">2</div><div class="txt">ቴሌብር ወይም ሲቢኢ ብር ይምረጡ
+    <div class="pay"><span style="background:#22c55e;color:#062b14">ቴሌብር</span><span style="background:#7c3aed">ሲቢኢ ብር</span></div></div></div>
+  <div class="step"><div class="num">3</div><div class="txt">ቦቱ በሚያሳይዎት <b>ቁጥር</b> ገንዘቡን ይላኩ 📲</div></div>
+  <div class="step"><div class="num">4</div><div class="txt">የሚደርስዎትን <b>የማረጋገጫ መልዕክት (SMS) ሙሉውን ኮፒ አድርገው</b> በቦቱ ውስጥ ይለጥፉ 📋
+    <div class="sms"><span class="copy">📋 ሙሉውን ኮፒ</span>Dear Customer, You have transferred <em>ETB 100.00</em> to … on 24/11/2026 … Your transaction number is <em>ABC1234XYZ</em>. …</div></div></div>
+  <div class="step done"><div class="num">5</div><div class="txt">ስናረጋግጥ ገንዘቡ ወደ ሂሳብዎ ይገባል ✅</div></div>
+</div>
+<div class="warn">
+  <h2>⚠️ አስፈላጊ፦</h2>
+  <ul>
+    <li>የSMSውን የተወሰነ ክፍል ሳይሆን <b>ሙሉውን</b> ይለጥፉ (የግብይት ቁጥሩ ያስፈልጋል)</li>
+    <li>እያንዳንዱ SMS አንድ ጊዜ ብቻ ይሰራል</li>
+    <li>ገንዘቡን ቦቱ ወደሚያሳየው ቁጥርና ስም ብቻ ይላኩ</li>
+  </ul>
+</div>
+</body></html>
