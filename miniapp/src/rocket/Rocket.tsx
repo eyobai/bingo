@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { API_URL, ApiError, api, session, type Balances, type Money } from '../api';
+import { GameTile } from '../game/GameTile';
 import { useI18n } from '../i18n';
 import { telegram } from '../telegram';
 import { useTick } from '../game/useRoom';
@@ -413,7 +414,8 @@ function BetPanel({ slot, state, mine, x, onMine, onNeedMoney, toast }: { slot: 
 }
 
 /** Lobby entry for the game, with its live status and recent results. */
-export function RocketCard({ onOpen }: { onOpen: () => void }) {
+/** Leyu Rocket on the game picker, with its live status and last results. Hidden while staff have it switched off. */
+export function RocketTile({ onOpen }: { onOpen: () => void }) {
   const { t } = useI18n();
   const [s, setS] = useState<RocketState | null>(null);
   useEffect(() => {
@@ -429,31 +431,24 @@ export function RocketCard({ onOpen }: { onOpen: () => void }) {
   if (!s?.enabled || !s.round) return null;
   const st = s.round.status;
   return (
-    <button
-      type="button"
-      onClick={() => {
-        telegram.tap();
-        onOpen();
-      }}
-      className="relative flex w-full items-center gap-3 overflow-hidden rounded-xl border border-gold/60 py-2.5 pl-3 pr-2.5 text-left"
-      style={{ background: 'linear-gradient(110deg,#1e3a6e,#111a2c 60%)' }}
-    >
-      <RocketIcon size={44} />
-      <span className="min-w-0 flex-1 leading-tight">
-        <span className="block font-display text-base">Leyu Rocket</span>
-        <span className="mt-0.5 block truncate text-[11px] text-muted">
-          {st === 'BETTING' ? t('rocketLobbyBetting') : st === 'FLYING' ? t('rocketLobbyFlying') : t('rocketLobbyNext')} · 👤 {s.round.players}
-        </span>
-        <span className="mt-1 flex gap-1">
-          {s.history.slice(0, 5).map((h) => (
+    <GameTile
+      name="Leyu Rocket"
+      tagline={t('rocketTagline')}
+      live={`${st === 'BETTING' ? t('rocketLobbyBetting') : st === 'FLYING' ? t('rocketLobbyFlying') : t('rocketLobbyNext')} · 👤 ${s.round.players}`}
+      extra={
+        <span className="flex gap-1">
+          {s.history.slice(0, 4).map((h) => (
             <span key={h.number} className="rounded-full bg-black/30 px-1.5 text-[10px] font-black tabular-nums" style={{ color: xColor(h.x100 / 100) }}>
               {fmt(h.x100 / 100)}×
             </span>
           ))}
         </span>
-      </span>
-      <span className="shrink-0 rounded-lg bg-gold px-3.5 py-2.5 font-display text-sm text-gold-ink">{t('rocketPlay')}</span>
-    </button>
+      }
+      accent="#f6b93b"
+      background="linear-gradient(115deg,#1e3a6e 0%,#111a2c 62%)"
+      onOpen={onOpen}
+      art={<RocketIcon size={96} />}
+    />
   );
 }
 

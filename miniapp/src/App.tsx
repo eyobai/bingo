@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ApiError, api, session, type Balances, type User } from './api';
 import { GameScreen } from './game/GameScreen';
+import { GameHub, type GameId } from './game/GameHub';
 import { Lobby } from './game/Lobby';
 import { RocketScreen } from './rocket/Rocket';
 import { ConnectionBanner } from './Connection';
@@ -68,11 +69,15 @@ type Tab = 'game' | 'wallet' | 'profile';
 function Shell({ user }: { user: User }) {
   const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>('game');
-  /** The room being played or watched; null shows the list of games. */
+  /** Which game's screens are open: null shows the game picker. */
+  const [game, setGame] = useState<GameId | null>(null);
+  /** The bingo room being played or watched; null shows the list of bingo rooms. */
   const [roomId, setRoomId] = useState<string | null>(null);
-  const backToGames = useCallback(() => setRoomId(null), []);
-  // Telegram's back arrow returns from a room to the list of games.
-  useEffect(() => telegram.backButton(tab === 'game' && roomId ? backToGames : null), [tab, roomId, backToGames]);
+  const toPicker = useCallback(() => (setRoomId(null), setGame(null)), []);
+  /** One step back: bingo room → bingo rooms → game picker; Rocket → game picker. */
+  const back = useCallback(() => (game === 'bingo' && roomId ? setRoomId(null) : toPicker()), [game, roomId, toPicker]);
+  // Telegram's back arrow does the same.
+  useEffect(() => telegram.backButton(tab === 'game' && game ? back : null), [tab, game, back]);
   const [wallet, setWallet] = useState<Balances | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -100,20 +105,19 @@ function Shell({ user }: { user: User }) {
       <main className="flex-1 pb-20">
         {/* The game stays mounted so the live connection survives tab switches. */}
         <div hidden={tab !== 'game'}>
-          {roomId ? (
-            <>
-              <button type="button" onClick={backToGames} className="flex w-full items-center gap-1.5 border-b border-line px-3 py-2 text-left text-xs font-bold text-muted active:text-ink">
-                <span aria-hidden>‹</span> {t('allGames')}
-              </button>
-              {roomId === 'rocket' ? (
-                <RocketScreen onWallet={setWallet} onNeedMoney={() => setTab('wallet')} toast={showToast} />
-              ) : (
-                <GameScreen key={roomId} roomId={roomId} onWallet={setWallet} onNeedMoney={() => setTab('wallet')} toast={showToast} />
-              )}
-            </>
-          ) : (
-            <Lobby onOpen={setRoomId} />
+          {game && (
+            <button type="button" onClick={back} className="flex w-full items-center gap-1.5 border-b border-line px-3 py-2 text-left text-xs font-bold text-muted active:text-ink">
+              <span aria-hidden>‹</span> {game === 'bingo' && roomId ? t('bingoName') : t('allGames')}
+            </button>
           )}
+          {!game && <GameHub onOpen={setGame} />}
+          {game === 'rocket' && <RocketScreen onWallet={setWallet} onNeedMoney={() => setTab('wallet')} toast={showToast} />}
+          {game === 'bingo' &&
+            (roomId ? (
+              <GameScreen key={roomId} roomId={roomId} onWallet={setWallet} onNeedMoney={() => setTab('wallet')} toast={showToast} />
+            ) : (
+              <Lobby onOpen={setRoomId} />
+            ))}
         </div>
         {tab === 'wallet' && <WalletView wallet={wallet} />}
         {tab === 'profile' && <ProfileView user={user} />}
@@ -132,7 +136,7 @@ function Shell({ user }: { user: User }) {
               ['profile', ProfileIcon, t('profile')],
             ] as const
           ).map(([k, Icon, label]) => (
-            <button key={k} type="button" onClick={() => (k === 'game' && tab === 'game' ? setRoomId(null) : setTab(k))} aria-current={tab === k} className={`flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-bold ${tab === k ? 'text-gold' : 'text-muted'}`}>
+            <button key={k} type="button" onClick={() => (k === 'game' && tab === 'game' ? toPicker() : setTab(k))} aria-current={tab === k} className={`flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-bold ${tab === k ? 'text-gold' : 'text-muted'}`}>
               <Icon active={tab === k} />
               {label}
             </button>

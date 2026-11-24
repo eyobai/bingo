@@ -3,7 +3,8 @@ import { api, type LobbyRoom, type LobbyState } from '../api';
 import { useI18n } from '../i18n';
 import { telegram } from '../telegram';
 import { useTick } from './useRoom';
-import { RocketCard } from '../rocket/Rocket';
+import { GameTile } from './GameTile';
+import { BallChip } from './parts';
 
 /** Colour of each stake level: coin, border, button. Unknown stakes cycle through the list. */
 const TIERS = [
@@ -72,7 +73,7 @@ export function Lobby({ onOpen }: { onOpen: (roomId: string) => void }) {
   return (
     <div className="flex flex-col gap-2 px-3 pb-4 pt-3">
       <div className="px-1">
-        <h1 className="font-display text-2xl">{t('games')}</h1>
+        <h1 className="font-display text-2xl">{t('bingoName')}</h1>
         <p className="text-xs text-muted">{t('gamesSub')}</p>
       </div>
       {retiringRoomId && retiringRoomId === joinedRetiringRoom && (
@@ -81,12 +82,51 @@ export function Lobby({ onOpen }: { onOpen: (roomId: string) => void }) {
           <span className="block text-xs text-muted">{t('houseRetired')}</span>
         </button>
       )}
-      <RocketCard onOpen={() => onOpen('rocket')} />
       {!data && <p className="py-10 text-center text-sm text-muted">{failed ? t('lobbyOffline') : '…'}</p>}
       {data?.rooms.map((room, i) => (
         <RoomCard key={room.id} room={room} color={room.practice ? '#2dd4bf' : tierColor(Number(room.stake.birr), i)} now={now()} onOpen={() => onOpen(room.id)} />
       ))}
     </div>
+  );
+}
+
+/** Bingo on the game picker: stake range, open rooms and how many rounds are being drawn now. */
+export function BingoTile({ onOpen }: { onOpen: () => void }) {
+  const { t } = useI18n();
+  const [data, setData] = useState<LobbyState | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => api<LobbyState>('/rooms').then((r) => alive && setData(r)).catch(() => undefined);
+    void load();
+    const id = setInterval(load, 5000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+  const paid = data?.rooms.filter((r) => !r.practice) ?? [];
+  const stakes = paid.map((r) => Number(r.stake.birr));
+  const live = paid.length
+    ? t('bingoLive', { n: paid.length, min: fmt(String(Math.min(...stakes))), max: fmt(String(Math.max(...stakes))) })
+    : undefined;
+  return (
+    <GameTile
+      name={t('bingoName')}
+      tagline={t('bingoTagline')}
+      live={live}
+      accent="#38bdf8"
+      background="linear-gradient(115deg,#123a5c 0%,#111a2c 62%)"
+      onOpen={onOpen}
+      art={
+        <span className="grid grid-cols-2 gap-1.5 rotate-[-8deg]">
+          {[7, 22, 41, 53, 68].map((n, i) => (
+            <span key={n} className={i === 4 ? 'col-span-2 justify-self-center' : ''}>
+              <BallChip n={n} size={42} />
+            </span>
+          ))}
+        </span>
+      }
+    />
   );
 }
 
