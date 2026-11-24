@@ -5,6 +5,8 @@ export type Lang = 'am' | 'en' | 'om';
 const en = {
   playWallet: 'Play wallet',
   mainWallet: 'Main wallet',
+  playShort: 'Play',
+  mainShort: 'Main',
   events: 'Events',
   eventsTitle: 'Coming soon',
   eventsBody: 'Stay tuned for big bonuses!',
@@ -182,6 +184,8 @@ type Dict = Record<keyof typeof en, string>;
 const am: Dict = {
   playWallet: 'መጫወቻ ሂሳብ',
   mainWallet: 'ዋና ሂሳብ',
+  playShort: 'መጫወቻ ሂሳብ',
+  mainShort: 'ዋና ሂሳብ',
   events: 'ዝግጅቶች',
   eventsTitle: 'በቅርቡ',
   eventsBody: 'ለትልቅ ቦነሶች ይጠብቁ!',
@@ -359,6 +363,8 @@ const am: Dict = {
 const om: Dict = {
   playWallet: 'Waaleetii boonasii',
   mainWallet: 'Waaleetii ijoo',
+  playShort: 'Boonasii',
+  mainShort: 'Ijoo',
   events: 'Taateewwan',
   eventsTitle: 'Dhiyootti',
   eventsBody: 'Boonasii gurguddaa eegaa!',

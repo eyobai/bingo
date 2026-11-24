@@ -23,7 +23,7 @@ services:
     build:
       context: ..
       args:
-        BRAND_NAME: ${BRAND_NAME:-Bingo}
+        BRAND_NAME: ${BRAND_NAME:-Leyu Games}
     restart: unless-stopped
     env_file: .env
     environment:

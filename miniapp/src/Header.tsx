@@ -1,7 +1,7 @@
 import type { Balances, User } from './api';
 import { useI18n } from './i18n';
 
-const BRAND = (import.meta.env.VITE_BRAND_NAME as string | undefined) || 'Bingo';
+const BRAND = (import.meta.env.VITE_BRAND_NAME as string | undefined) || 'Leyu Games';
 
 export function Header({ user, wallet }: { user: User; wallet: Balances | null }) {
   const { t, lang, setLang } = useI18n();
@@ -11,10 +11,21 @@ export function Header({ user, wallet }: { user: User; wallet: Balances | null }
         {user.firstName.slice(0, 1).toUpperCase()}
       </div>
       <div className="flex min-w-0 flex-col gap-1">
-        <WalletPill label={t('playWallet')} value={wallet?.play.birr} tone="text-sky-400" />
-        <WalletPill label={t('mainWallet')} value={wallet?.main.birr} tone="text-gold" />
+        <WalletPill label={t('playShort')} value={wallet?.play.birr} tone="text-sky-400" />
+        <WalletPill label={t('mainShort')} value={wallet?.main.birr} tone="text-gold" />
       </div>
-      <div className="min-w-0 flex-1 truncate text-center font-display text-xl tracking-wide text-gold">{BRAND}</div>
+      {/* Two-word names ("Leyu Games") stack on two lines so they fit next to the wallets on small phones. */}
+      <div className="flex min-w-0 flex-1 flex-col items-center text-center font-display leading-[1.05] tracking-wide text-gold">
+        {BRAND.split(' ').length === 2 ? (
+          BRAND.split(' ').map((w) => (
+            <span key={w} className="max-w-full truncate text-base">
+              {w}
+            </span>
+          ))
+        ) : (
+          <span className="max-w-full truncate text-xl">{BRAND}</span>
+        )}
+      </div>
       <div className="flex shrink-0 rounded-full border border-line bg-panel p-0.5 text-[11px] font-bold">
         {(['am', 'om', 'en'] as const).map((l) => (
           <button

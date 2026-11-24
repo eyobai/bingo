@@ -5,8 +5,8 @@
 FROM node:22-slim AS web
 WORKDIR /src
 # Shown in the game header.
-ARG BRAND_NAME=Bingo
-ENV VITE_BRAND_NAME=${BRAND_NAME} \
+ARG BRAND_NAME="Leyu Games"
+ENV VITE_BRAND_NAME="${BRAND_NAME}" \
     VITE_API_URL= \
     VITE_DEV_LOGIN=false
 COPY miniapp/package.json miniapp/package-lock.json miniapp/
