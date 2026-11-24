@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Archivo;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource/archivo-black/files/archivo-black-latin-400-normal.woff2)}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-ethiopic-wght-normal.woff2);font-weight:100 900}
+@font-face{font-family:Ethi;src:url(file:///home/user/bingo/miniapp/node_modules/@fontsource-variable/noto-sans-ethiopic/files/noto-sans-ethiopic-latin-wght-normal.woff2);font-weight:100 900;unicode-range:U+0000-00FF}
+*{box-sizing:border-box;margin:0}
+body{width:1080px;height:1080px;overflow:hidden;font-family:Ethi,sans-serif;color:#fff;position:relative;text-align:center;background:radial-gradient(ellipse at 55% 70%,#23477f 0,#0b1120 68%)}
+.brand{position:absolute;top:46px;left:50%;transform:translateX(-50%);background:#f6b93b;color:#0b1120;font-family:Archivo;font-size:30px;letter-spacing:6px;padding:10px 30px 10px 36px;border-radius:40px}
+.new{position:absolute;top:132px;left:0;right:0;font-size:78px;font-weight:900;color:#f6b93b;text-shadow:0 4px 30px #f6b93b55}
+.name{position:absolute;top:236px;left:0;right:0;font-size:70px;font-weight:900;line-height:1.1}
+.code{position:absolute;top:372px;left:50%;transform:translateX(-50%);border:5px dashed #f6b93b;border-radius:26px;padding:12px 40px 8px;background:#0b1120cc;white-space:nowrap}
+.code small{display:block;font-size:26px;font-weight:700;color:#cbd5e1}
+.code b{font-family:Archivo;font-weight:400;font-size:84px;letter-spacing:4px;color:#f6b93b;line-height:1.1}
+.hist{position:absolute;top:388px;left:0;right:0;display:flex;justify-content:center;gap:14px}
+.hist span{background:#1b2740;border:2px solid #2a3858;border-radius:30px;padding:6px 20px;font-family:Archivo;font-size:28px}
+.mult{position:absolute;top:470px;left:70px;font-family:Archivo;font-size:170px;line-height:1;text-shadow:0 8px 40px #60a5fa88}
+.how{position:absolute;bottom:200px;left:0;right:0;font-size:40px;font-weight:800}
+.cta{position:absolute;bottom:92px;left:50%;transform:translateX(-50%);white-space:nowrap;background:#f6b93b;color:#0b1120;font-size:42px;font-weight:900;border-radius:24px;padding:14px 44px}
+.small{position:absolute;bottom:38px;left:0;right:0;font-size:24px;font-weight:700;color:#cbd5e1}
+</style></head><body>
+<svg style="position:absolute;inset:0" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <defs>
+    <linearGradient id="body" x1="0" x2="1"><stop offset="0" stop-color="#ff6b5e"/><stop offset=".55" stop-color="#e3342f"/><stop offset="1" stop-color="#a51d1d"/></linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
+  </defs>
+  <g fill="#9fbcf0"><circle cx="90" cy="120" r="2.5"/><circle cx="980" cy="90" r="2"/><circle cx="880" cy="360" r="2.4"/><circle cx="160" cy="420" r="1.8"/><circle cx="1010" cy="520" r="2"/><circle cx="60" cy="640" r="2.2"/><circle cx="420" cy="180" r="1.6"/><circle cx="700" cy="70" r="1.8"/></g>
+  <path fill="#14213a" d="M0 1080V900h60v-50h55v50h80v-90h60v90h80V820l35-80 35 80v260h40v-120h80v70h100v-80h70v60h80v-40h60v-70h50v70h60v-50h45v180z"/>
+  <path d="M30 1000 Q 520 980 820 660" fill="none" stroke="#f6b93b" stroke-width="34" stroke-linecap="round" opacity=".4" filter="url(#glow)"/>
+  <path d="M30 1000 Q 520 980 820 660" fill="none" stroke="#ffd877" stroke-width="14" stroke-linecap="round"/>
+  <g transform="translate(838,640) rotate(52) scale(6.2)">
+    <path d="M-4,10 Q0,30 4,10 Z" fill="#ffb347" opacity=".9"/>
+    <path d="M-2.2,10 Q0,22 2.2,10 Z" fill="#fff3c4"/>
+    <path d="M-6,3 L-12,13 L-5,10 Z M6,3 L12,13 L5,10 Z" fill="#ffffff" stroke="#0b1120" stroke-width="1"/>
+    <path d="M0,-19 C7.5,-12 8,0 6,10 L-6,10 C-8,0 -7.5,-12 0,-19 Z" fill="url(#body)" stroke="#0b1120" stroke-width="1.2"/>
+    <path d="M0,-19 C4,-15 5.5,-11 6.2,-8 L-6.2,-8 C-5.5,-11 -4,-15 0,-19 Z" fill="#ffffff" stroke="#0b1120" stroke-width="1"/>
+    <circle cx="0" cy="-1" r="3.4" fill="#0b1120"/><circle cx="0" cy="-1" r="2.2" fill="#7cc4ff"/><circle cx="-0.8" cy="-1.8" r=".7" fill="#fff"/>
+    <path d="M-2.5,10 L-1.5,6 L1.5,6 L2.5,10 Z" fill="#0b1120"/>
+  </g>
+</svg>
+<div class="brand">LEYU GAMES</div>
+<div class="new">🎁 የ20 ብር ስጦታ!</div>
+<div class="name">ለመጀመሪያዎቹ 50 ተጫዋቾች</div>
+<div class="code"><small>ኮድ</small><b>LEYUROCKET</b></div>
+<div class="how">🎁 ፕሮሞ ኮድ → LEYUROCKET → 20 ብር ✅</div>
+<div class="cta">@LeyuGamesBot</div>
+<div class="small">ለመጀመሪያዎቹ 50 ተጫዋቾች ብቻ · አንድ ሰው አንድ ጊዜ · 18+ · በኃላፊነት ይጫወቱ</div>
+</body></html>
