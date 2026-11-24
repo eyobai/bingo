@@ -122,6 +122,12 @@ describe('automated players (integration)', () => {
 
   it('keeps the staff record when every automated player was skipped', async () => {
     await enable('unfunded', 3);
+    // The dashboard warns that the empty bankroll cannot pay for them.
+    const health = (await http.get('/api/admin/house-bankroll').set(auth(staff)).expect(200)).body.health;
+    expect(health).toMatchObject({ status: 'empty', roundsCovered: 0 });
+    const unfunded = health.rooms.find((r: any) => r.id === 'unfunded');
+    expect(unfunded.covered).toBe(false);
+    expect(Number(unfunded.fullRound.birr)).toBe(3 * Number(unfunded.stake.birr));
     // This room's countdown is 2 s: just take the round that announced them and check its final record.
     const ready = await until('unfunded', (x) => x.room.automatedPlayers === 3);
     await disable('unfunded');
@@ -131,6 +137,9 @@ describe('automated players (integration)', () => {
       status: 'CANCELLED', automatedAnnounced: 3, automatedCards: 0, automatedSkipped: 3,
     });
     expect(await bankroll()).toBe(0n);
+    const after = (await http.get('/api/admin/house-bankroll').set(auth(staff)).expect(200)).body.health;
+    expect(after.skippedLast24h).toBeGreaterThanOrEqual(3);
+    expect(after.lastSkipAt).toBeTruthy();
   });
 
   it('joins at the countdown start, skips what the bankroll cannot pay, and requires the disclosure', async () => {

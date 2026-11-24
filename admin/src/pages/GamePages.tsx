@@ -178,8 +178,19 @@ function AuditLog({ rows, error }: { rows: AuditRow[] | null; error: string | nu
   );
 }
 
+export interface BankrollHealth {
+  status: 'off' | 'empty' | 'low' | 'ok';
+  oneRoundAllRooms: Money;
+  roundsCovered: number | null;
+  suggestedTopUp: Money;
+  rooms: { id: string; name: string; stake: Money; fullRound: Money; covered: boolean }[];
+  skippedLast24h: number;
+  lastSkipAt: string | null;
+}
+
 interface BankrollView {
   balance: Money;
+  health: BankrollHealth;
   recent: { id: string; type: string; description: string; createdAt: string; metadata: { amountMinor?: string } | null }[];
 }
 
@@ -215,6 +226,7 @@ function HouseBankroll({ onChanged }: { onChanged: () => void }) {
           Keep this money separate from player funds. Record each real bank transfer here with its bank reference; recording does not move money.
           Automated entries that the bankroll cannot pay for are skipped.
         </p>
+        {view.data && <BankrollHealthBox health={view.data.health} />}
         <div className="grid gap-3 sm:grid-cols-[1fr_2fr_auto_auto]">
           <input inputMode="numeric" placeholder="Amount (birr)" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} className={field} aria-label="Amount in birr" />
           <input placeholder="Bank reference" value={reference} onChange={(e) => setReference(e.target.value)} className={field} aria-label="Bank reference" />
@@ -237,6 +249,45 @@ function HouseBankroll({ onChanged }: { onChanged: () => void }) {
         )}
       </div>
     </Panel>
+  );
+}
+
+const fmtBirr = (m: Money) => Number(m.birr).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+/** What the bankroll covers: per room, one round with the most automated players and cards it can bring in. */
+function BankrollHealthBox({ health: h }: { health: BankrollHealth }) {
+  if (h.status === 'off') return <p className="text-xs text-muted">No room has automated players switched on.</p>;
+  const tone = h.status === 'ok' ? 'border-good/40 bg-good-soft' : 'border-bad/50 bg-bad-soft';
+  return (
+    <div className={`flex flex-col gap-2 rounded-xl border px-3 py-2.5 text-sm ${tone}`}>
+      <p className="font-semibold">
+        {h.status === 'empty' && '⚠ Bankroll empty: automated players cannot join any room.'}
+        {h.status === 'low' && '⚠ Bankroll low: not enough for one full round in every room. Some automated players will be skipped.'}
+        {h.status === 'ok' && `✓ Enough for about ${h.roundsCovered} full round(s) in every room.`}
+      </p>
+      <p className="text-xs">
+        One full round in every room needs <b>{fmtBirr(h.oneRoundAllRooms)} birr</b>.
+        {Number(h.suggestedTopUp.birr) > 0 && (
+          <>
+            {' '}
+            To cover 5 rounds, record about <b>{fmtBirr(h.suggestedTopUp)} birr</b> more.
+          </>
+        )}
+        {h.skippedLast24h > 0 && (
+          <>
+            {' '}
+            <b>{h.skippedLast24h}</b> automated player(s) skipped in the last 24 hours{h.lastSkipAt ? `, last at ${fmtDate(h.lastSkipAt)}` : ''}.
+          </>
+        )}
+      </p>
+      <ul className="flex flex-wrap gap-1.5 text-xs">
+        {h.rooms.map((r) => (
+          <li key={r.id} className={`rounded-full px-2 py-0.5 ${r.covered ? 'bg-panel text-muted' : 'bg-bad text-white'}`}>
+            {r.name} ({fmtBirr(r.stake)} birr): {fmtBirr(r.fullRound)} birr per full round
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

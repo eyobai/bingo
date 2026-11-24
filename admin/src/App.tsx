@@ -3,7 +3,7 @@ import { ApiError, api, session, whenSignedOut } from './api';
 import { Overview } from './pages/Overview';
 import { Deposits, Withdrawals } from './pages/Payments';
 import { Players } from './pages/Players';
-import { Rounds, Settings } from './pages/GamePages';
+import { Rounds, Settings, type BankrollHealth } from './pages/GamePages';
 import { Messages } from './pages/Messages';
 import { Promos } from './pages/Promos';
 import { Rocket } from './pages/Rocket';
@@ -38,6 +38,8 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
   const [playerId, setPlayerId] = useState<string | null>(null);
   const counts = useApi<{ pendingDeposits: number; pendingWithdrawals: number }>('/admin/summary?days=1', 5_000);
   const me = useApi<{ user: { firstName: string } }>('/me');
+  const bankroll = useApi<{ health: BankrollHealth }>('/admin/house-bankroll', 30_000);
+  const lowBankroll = bankroll.data && (bankroll.data.health.status === 'empty' || bankroll.data.health.status === 'low') ? bankroll.data.health : null;
 
   useEffect(() => {
     const onHash = () => setPage(pageFromHash());
@@ -86,6 +88,19 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
       </nav>
       <main className="min-w-0 flex-1 px-4 py-5 md:px-8">
         <div className="mx-auto flex max-w-6xl flex-col gap-4">
+          {lowBankroll && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-bad/50 bg-bad-soft px-4 py-2.5 text-sm">
+              <span>
+                <b>⚠ {lowBankroll.status === 'empty' ? 'House bankroll empty' : 'House bankroll low'}:</b>{' '}
+                {lowBankroll.status === 'empty' ? 'automated players cannot join any room.' : 'some automated players will be skipped.'} One full round in every room
+                needs {Number(lowBankroll.oneRoundAllRooms.birr).toLocaleString('en-US')} birr.
+                {lowBankroll.skippedLast24h > 0 && ` ${lowBankroll.skippedLast24h} skipped in the last 24 hours.`}
+              </span>
+              <Button tone="bad" onClick={() => go('settings')}>
+                Fund the bankroll
+              </Button>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-2">
             <h1 className="text-xl font-bold">{PAGES.find(([k]) => k === page)?.[1]}</h1>
             <button type="button" onClick={onSignOut} className="text-xs text-muted underline md:hidden">

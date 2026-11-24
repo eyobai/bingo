@@ -28,7 +28,46 @@ export class HouseBankrollService {
         select: { id: true, type: true, description: true, createdAt: true, metadata: true },
       }),
     ]);
-    return { balance: money(balance), recent };
+    return { balance: money(balance), recent, health: await this.health(balance) };
+  }
+
+  /**
+   * Is there enough in the bankroll for the automated players the rooms are set to bring in?
+   * "Full round" = the most automated players a room can announce, each taking the most cards allowed, at its stake.
+   * - empty: not even one card in the cheapest room; automated players are being skipped everywhere.
+   * - low: less than one full round in every room at once (rooms run at the same time); some will be skipped.
+   * - ok: at least one full round in every room.
+   */
+  async health(balance?: bigint) {
+    const bal = balance ?? (await this.ledger.systemBalance(AccountType.HOUSE_BANKROLL));
+    const since = new Date(Date.now() - 24 * 3_600_000);
+    const [rooms, skipped] = await Promise.all([
+      this.prisma.room.findMany({
+        where: { isActive: true, automatedEnabled: true, automatedPlayers: { gt: 0 }, stakeMinor: { gt: 0n } },
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, name: true, stakeMinor: true, automatedPlayers: true, automatedMaxCards: true, maxCardsPerPlayer: true },
+      }),
+      this.prisma.round.aggregate({ where: { createdAt: { gte: since }, houseSkipped: { gt: 0 } }, _sum: { houseSkipped: true }, _max: { createdAt: true } }),
+    ]);
+    const perRoom = rooms.map((r) => {
+      const fullRound = BigInt(r.automatedPlayers * Math.max(1, Math.min(r.automatedMaxCards, r.maxCardsPerPlayer))) * r.stakeMinor;
+      return { id: r.id, name: r.name, stake: money(r.stakeMinor), fullRound: money(fullRound), fullRoundMinor: fullRound, covered: bal >= fullRound };
+    });
+    const allRooms = perRoom.reduce((s, r) => s + r.fullRoundMinor, 0n);
+    const cheapest = rooms.reduce<bigint | null>((m, r) => (m === null || r.stakeMinor < m ? r.stakeMinor : m), null);
+    const status = !rooms.length ? 'off' : cheapest !== null && bal < cheapest ? 'empty' : bal < allRooms ? 'low' : 'ok';
+    return {
+      status,
+      /** One full round in every room with automated players, at the same time. */
+      oneRoundAllRooms: money(allRooms),
+      /** How many such rounds the bankroll covers (rounded down). */
+      roundsCovered: allRooms > 0n ? Number(bal / allRooms) : null,
+      /** Suggested top-up to cover 5 full rounds in every room (automated winnings come back, so this is a cushion). */
+      suggestedTopUp: money(allRooms * 5n > bal ? allRooms * 5n - bal : 0n),
+      rooms: perRoom.map((r) => ({ id: r.id, name: r.name, stake: r.stake, fullRound: r.fullRound, covered: r.covered })),
+      skippedLast24h: skipped._sum.houseSkipped ?? 0,
+      lastSkipAt: skipped._max.createdAt,
+    };
   }
 
   /** Operator cash paid into the bankroll (verified bank transfer). */
