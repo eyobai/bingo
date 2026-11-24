@@ -141,6 +141,7 @@ interface AuditRow {
 const ACTION_LABEL: Record<string, string> = {
   ROOM_AUTOMATED_PLAYERS: 'Automated players changed',
   ROOM_UPDATE: 'Room settings changed',
+  ROCKET_SETTINGS: 'Leyu Rocket settings changed',
   BANKROLL_FUND: 'Bankroll funded',
   BANKROLL_WITHDRAW: 'Bankroll withdrawal',
 };
@@ -156,7 +157,7 @@ function changes(before: Record<string, unknown> | null, after: Record<string, u
 
 function AuditLog({ rows, error }: { rows: AuditRow[] | null; error: string | null }) {
   return (
-    <Panel title="Audit trail (automated players, room settings, bankroll)">
+    <Panel title="Audit trail (automated players, room and Rocket settings, bankroll)">
       <ErrorLine error={error} />
       {rows?.length === 0 && <Empty>No changes recorded yet.</Empty>}
       <ul className="divide-y divide-line text-sm">

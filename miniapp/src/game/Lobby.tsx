@@ -3,6 +3,7 @@ import { api, type LobbyRoom, type LobbyState } from '../api';
 import { useI18n } from '../i18n';
 import { telegram } from '../telegram';
 import { useTick } from './useRoom';
+import { RocketCard } from '../rocket/Rocket';
 
 /** Colour of each stake level: coin, border, button. Unknown stakes cycle through the list. */
 const TIERS = [
@@ -80,6 +81,7 @@ export function Lobby({ onOpen }: { onOpen: (roomId: string) => void }) {
           <span className="block text-xs text-muted">{t('houseRetired')}</span>
         </button>
       )}
+      <RocketCard onOpen={() => onOpen('rocket')} />
       {!data && <p className="py-10 text-center text-sm text-muted">{failed ? t('lobbyOffline') : '…'}</p>}
       {data?.rooms.map((room, i) => (
         <RoomCard key={room.id} room={room} color={room.practice ? '#2dd4bf' : tierColor(Number(room.stake.birr), i)} now={now()} onOpen={() => onOpen(room.id)} />

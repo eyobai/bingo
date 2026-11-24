@@ -245,6 +245,35 @@ operator balance and recent funding records for reconciliation. No funds are tra
 - Winners are found by the server after every ball, for every card, so nobody loses a win by not tapping in
   time. *Manual* mode in the app only changes who marks the card.
 
+## Leyu Rocket (crash game)
+
+A second real-money game in the same Mini App and wallet. It is **off** until staff switch it on under
+**Leyu Rocket** in the dashboard.
+
+- **How a round works.** Betting is open for a few seconds (default 7). Then the rocket takes off and the
+  multiplier climbs from 1.00×. A player can cash out at any moment and is paid stake × the multiplier at
+  that moment. When the rocket "flies away" (crashes), every bet not cashed out is lost. Each player has two
+  bet slots, each with an optional auto cash-out (for example at 2.00×).
+- **Where money goes.** Bets come from the play wallet first, then the main wallet. Wins always go to the
+  main wallet. Every bet, win and refund is a ledger entry against the `ROCKET_HOUSE` account, whose balance
+  is the game's all-time result. That balance can go negative after a lucky streak, which is normal.
+- **House edge.** The crash point is drawn so players get back about (100 − edge)% of what they bet over
+  time; with the default 3% edge about 3 rounds in 100 crash at 1.00×. The highest multiplier and the highest
+  win per bet cap the most any single bet can win; a bet is cashed out automatically at that cap.
+- **Provably fair.** Before betting the round shows the SHA-256 of a secret seed. The crash point is
+  `HMAC-SHA256(seed, "rocket:<round number>")` turned into a multiplier (see `backend/src/rocket/crash.ts`).
+  After the crash the seed is shown in the app and at `GET /api/rocket/verify/:number`, so anyone can check
+  that the result was fixed before the bets.
+- **Dashboard.** Switch on/off, house edge, lowest and highest bet, highest multiplier, highest win per bet,
+  betting time, period results and the last 50 rounds with their seeds. Every change is in the audit trail.
+- **API.** `GET /rocket/state` and `GET /rocket/verify/:number` (public), `GET /rocket/my`,
+  `POST /rocket/bet { slot, amount, autoX? }`, `DELETE /rocket/bet/:slot` (before take-off, full refund),
+  `POST /rocket/cashout { slot }`. Live updates: emit `rocket:join` on the socket and listen for `rocket`.
+- **Run one backend process only.** The round clock runs inside the API process; two copies would run two
+  games against one database.
+- **Before switching it on:** keep enough cash in the Telebirr account to pay several maximum wins at once,
+  and add loss limits, cool-downs and self-exclusion for players (not built yet).
+
 ## API (all under `/api`)
 
 | Method | Path | Who |

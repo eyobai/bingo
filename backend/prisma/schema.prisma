@@ -42,6 +42,7 @@ model User {
   promoRedemptions PromoRedemption[]
   withdrawals Withdrawal[]    @relation("WithdrawalUser")
   staffAudits StaffAudit[]    @relation("StaffAudits")
+  rocketBets  RocketBet[]
 
   @@map("users")
 }
@@ -73,6 +74,8 @@ enum AccountType {
   HOUSE_BANKROLL
   /// Offset for externally verified operator cash contributions.
   HOUSE_CAPITAL
+  /// Leyu Rocket: the house side of every bet and payout. Goes negative when players win more than they bet.
+  ROCKET_HOUSE
 }
 
 model LedgerAccount {
@@ -105,6 +108,10 @@ enum TxType {
   HOUSE_FUNDING
   /// Operator cash taken back out of the house bankroll.
   HOUSE_WITHDRAWAL
+  /// Leyu Rocket bet placed, won (cashed out) or refunded.
+  ROCKET_BET
+  ROCKET_PAYOUT
+  ROCKET_REFUND
 }
 
 model LedgerTransaction {
@@ -381,3 +388,84 @@ model StaffAudit {
   @@index([targetType, targetId, createdAt])
   @@map("staff_audit")
 }
+
+// ─── Leyu Rocket (crash game) ───────────────────────────────────────────────
+
+enum RocketStatus {
+  BETTING
+  FLYING
+  CRASHED
+}
+
+enum RocketBetStatus {
+  PLACED
+  CASHED
+  LOST
+  REFUNDED
+}
+
+/// One Leyu Rocket round. The crash point is fixed by a secret seed whose SHA-256 is shown before betting.
+model RocketRound {
+  id            String       @id @default(uuid()) @db.Uuid
+  number        Int          @unique @default(autoincrement())
+  status        RocketStatus @default(BETTING)
+  serverSeed    String       @map("server_seed") @db.Char(64)
+  seedHash      String       @map("seed_hash") @db.Char(64)
+  /// Crash multiplier × 100 (213 = 2.13×). Secret until the round ends.
+  crashX100     Int          @map("crash_x100")
+  houseEdgeBps  Int          @map("house_edge_bps")
+  bettingEndsAt DateTime     @map("betting_ends_at") @db.Timestamptz(3)
+  startedAt     DateTime?    @map("started_at") @db.Timestamptz(3)
+  crashedAt     DateTime?    @map("crashed_at") @db.Timestamptz(3)
+  totalBetMinor BigInt       @default(0) @map("total_bet_minor")
+  totalPaidMinor BigInt      @default(0) @map("total_paid_minor")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  bets RocketBet[]
+
+  @@index([status])
+  @@map("rocket_rounds")
+}
+
+/// A bet in one of the player's two bet slots for a round.
+model RocketBet {
+  id             String          @id @default(uuid()) @db.Uuid
+  roundId        String          @map("round_id") @db.Uuid
+  userId         String          @map("user_id") @db.Uuid
+  slot           Int
+  stakeMinor     BigInt          @map("stake_minor")
+  paidPlayMinor  BigInt          @default(0) @map("paid_play_minor")
+  paidMainMinor  BigInt          @default(0) @map("paid_main_minor")
+  /// Cash out automatically at this multiplier × 100 (null = manual only).
+  autoX100       Int?            @map("auto_x100")
+  cashedX100     Int?            @map("cashed_x100")
+  payoutMinor    BigInt          @default(0) @map("payout_minor")
+  status         RocketBetStatus @default(PLACED)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  round RocketRound @relation(fields: [roundId], references: [id])
+  user  User        @relation(fields: [userId], references: [id])
+
+  @@unique([roundId, userId, slot])
+  @@index([userId, createdAt])
+  @@map("rocket_bets")
+}
+
+/// Leyu Rocket settings (one row, id = 1). Changes apply from the next round.
+model RocketSettings {
+  id                Int      @id @default(1)
+  enabled           Boolean  @default(false)
+  /// House edge in basis points: 300 = 3% (players get back 97% on average).
+  houseEdgeBps      Int      @default(300) @map("house_edge_bps")
+  minBetMinor       BigInt   @default(1000) @map("min_bet_minor")
+  maxBetMinor       BigInt   @default(100000) @map("max_bet_minor")
+  /// The rocket never flies past this multiplier × 100 (10000 = 100×).
+  maxX100           Int      @default(10000) @map("max_x100")
+  /// A bet is cashed out automatically when its win reaches this amount.
+  maxWinMinor       BigInt   @default(1000000) @map("max_win_minor")
+  bettingSeconds    Int      @default(7) @map("betting_seconds")
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("rocket_settings")
+}
+

@@ -16,6 +16,9 @@ const HISTORY_LABELS: Record<TxType, string> = {
   ADJUSTMENT: 'Correction',
   HOUSE_FUNDING: 'House bankroll funding',
   HOUSE_WITHDRAWAL: 'House bankroll withdrawal',
+  ROCKET_BET: 'Leyu Rocket bet',
+  ROCKET_PAYOUT: 'Leyu Rocket win',
+  ROCKET_REFUND: 'Leyu Rocket bet returned',
 };
 
 @Injectable()

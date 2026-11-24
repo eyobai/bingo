@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, api, session, type Balances, type User } from './api';
 import { GameScreen } from './game/GameScreen';
 import { Lobby } from './game/Lobby';
+import { RocketScreen } from './rocket/Rocket';
 import { ConnectionBanner } from './Connection';
 import { Header } from './Header';
 import { GameIcon, ProfileIcon, WalletIcon } from './TabIcons';
@@ -104,7 +105,11 @@ function Shell({ user }: { user: User }) {
               <button type="button" onClick={backToGames} className="flex w-full items-center gap-1.5 border-b border-line px-3 py-2 text-left text-xs font-bold text-muted active:text-ink">
                 <span aria-hidden>‹</span> {t('allGames')}
               </button>
-              <GameScreen key={roomId} roomId={roomId} onWallet={setWallet} onNeedMoney={() => setTab('wallet')} toast={showToast} />
+              {roomId === 'rocket' ? (
+                <RocketScreen onWallet={setWallet} onNeedMoney={() => setTab('wallet')} toast={showToast} />
+              ) : (
+                <GameScreen key={roomId} roomId={roomId} onWallet={setWallet} onNeedMoney={() => setTab('wallet')} toast={showToast} />
+              )}
             </>
           ) : (
             <Lobby onOpen={setRoomId} />

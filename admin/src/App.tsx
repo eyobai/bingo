@@ -6,6 +6,7 @@ import { Players } from './pages/Players';
 import { Rounds, Settings } from './pages/GamePages';
 import { Messages } from './pages/Messages';
 import { Promos } from './pages/Promos';
+import { Rocket } from './pages/Rocket';
 import { Button, field, useApi } from './ui';
 
 const PAGES = [
@@ -16,6 +17,7 @@ const PAGES = [
   ['rounds', 'Rounds'],
   ['messages', 'Messages'],
   ['promos', 'Promo codes'],
+  ['rocket', 'Leyu Rocket'],
   ['settings', 'Game settings'],
 ] as const;
 type Page = (typeof PAGES)[number][0];
@@ -97,6 +99,7 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
           {page === 'rounds' && <Rounds />}
           {page === 'messages' && <Messages />}
           {page === 'promos' && <Promos openPlayer={openPlayer} />}
+          {page === 'rocket' && <Rocket />}
           {page === 'settings' && <Settings />}
         </div>
       </main>

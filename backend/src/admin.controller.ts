@@ -78,6 +78,16 @@ class RoomUpdateDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(500) automatedPlayers?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10) automatedMaxCards?: number;
 }
+class RocketSettingsDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  /** House edge in percent, e.g. 3 = players get back 97% on average. */
+  @IsOptional() @Type(() => Number) @Min(1) @Max(20) houseEdgePercent?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100_000) minBetBirr?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1_000_000) maxBetBirr?: number;
+  @IsOptional() @Type(() => Number) @Min(2) @Max(1000) maxX?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100_000_000) maxWinBirr?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(4) @Max(30) bettingSeconds?: number;
+}
 class BankrollMoveDto {
   @Matches(/^[1-9]\d{0,6}$/) amountBirr!: string;
   @Matches(/^[A-Za-z0-9][A-Za-z0-9._/-]{2,79}$/) bankReference!: string;
@@ -142,6 +152,72 @@ export class AdminController {
       /** Must be 0. Anything else means the books are broken: stop and investigate. */
       ledgerCheck: money(await this.ledger.trialBalance()),
     };
+  }
+
+  /** Leyu Rocket: settings, the game's result and recent rounds. */
+  @Get('rocket')
+  async rocket(@Query('days') daysRaw?: string) {
+    const days = Math.min(Math.max(Number(daysRaw) || 7, 1), 365);
+    const since = new Date(Date.now() - days * 86_400_000);
+    const [settings, house, agg, rounds, players] = await Promise.all([
+      this.prisma.rocketSettings.findUniqueOrThrow({ where: { id: 1 } }),
+      this.ledger.systemBalance(AccountType.ROCKET_HOUSE),
+      this.prisma.rocketRound.aggregate({ where: { status: 'CRASHED', createdAt: { gte: since } }, _count: true, _sum: { totalBetMinor: true, totalPaidMinor: true } }),
+      this.prisma.rocketRound.findMany({ where: { status: 'CRASHED' }, orderBy: { number: 'desc' }, take: 50, include: { _count: { select: { bets: true } } } }),
+      this.prisma.rocketBet.groupBy({ by: ['userId'], where: { createdAt: { gte: since } } }).then((r) => r.length),
+    ]);
+    const bet = agg._sum.totalBetMinor ?? 0n;
+    const paid = agg._sum.totalPaidMinor ?? 0n;
+    return {
+      settings: {
+        enabled: settings.enabled,
+        houseEdgePercent: settings.houseEdgeBps / 100,
+        minBetBirr: Number(settings.minBetMinor / 100n),
+        maxBetBirr: Number(settings.maxBetMinor / 100n),
+        maxX: settings.maxX100 / 100,
+        maxWinBirr: Number(settings.maxWinMinor / 100n),
+        bettingSeconds: settings.bettingSeconds,
+      },
+      // All-time: positive = the house is up, negative = players are up.
+      houseResult: money(house),
+      period: { days, rounds: agg._count, players, bets: money(bet), paid: money(paid), result: money(bet - paid) },
+      rounds: rounds.map((r) => ({
+        number: r.number,
+        crashX: r.crashX100 / 100,
+        bets: r._count.bets,
+        totalBet: money(r.totalBetMinor),
+        totalPaid: money(r.totalPaidMinor),
+        result: money(r.totalBetMinor - r.totalPaidMinor),
+        seedHash: r.seedHash,
+        serverSeed: r.serverSeed,
+        at: r.createdAt,
+      })),
+    };
+  }
+
+  @Patch('rocket/settings')
+  async rocketSettings(@CurrentUser() staff: AuthUser, @Body() body: RocketSettingsDto) {
+    const before = await this.prisma.rocketSettings.findUniqueOrThrow({ where: { id: 1 } });
+    const data = {
+      ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
+      ...(body.houseEdgePercent !== undefined ? { houseEdgeBps: Math.round(body.houseEdgePercent * 100) } : {}),
+      ...(body.minBetBirr !== undefined ? { minBetMinor: BigInt(body.minBetBirr) * 100n } : {}),
+      ...(body.maxBetBirr !== undefined ? { maxBetMinor: BigInt(body.maxBetBirr) * 100n } : {}),
+      ...(body.maxX !== undefined ? { maxX100: Math.round(body.maxX * 100) } : {}),
+      ...(body.maxWinBirr !== undefined ? { maxWinMinor: BigInt(body.maxWinBirr) * 100n } : {}),
+      ...(body.bettingSeconds !== undefined ? { bettingSeconds: body.bettingSeconds } : {}),
+    };
+    const minBet = data.minBetMinor ?? before.minBetMinor;
+    const maxBet = data.maxBetMinor ?? before.maxBetMinor;
+    if (maxBet < minBet) throw new AppError(HttpStatus.BAD_REQUEST, 'ROCKET_LIMITS', 'The highest bet cannot be below the lowest bet.');
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.rocketSettings.update({ where: { id: 1 }, data });
+      const keys = Object.keys(data);
+      const pick = (row: object) => Object.fromEntries(keys.map((k) => [k, (row as Record<string, unknown>)[k]]));
+      await this.audit.record({ staffId: staff.id, action: 'ROCKET_SETTINGS', targetType: 'game', targetId: 'rocket', before: pick(before), after: pick(u) }, tx);
+      return u;
+    });
+    return { ok: true, enabled: updated.enabled, note: 'Applies from the next round.' };
   }
 
   /** House bankroll: operator cash for automated players' stakes. */

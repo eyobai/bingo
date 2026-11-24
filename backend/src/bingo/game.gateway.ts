@@ -12,6 +12,7 @@ import { AuthGuard } from '../common/common';
 import { NotifyService } from '../notify.service';
 import { WalletService } from '../wallet/wallet.service';
 import { GameService } from './game.service';
+import { RocketService } from '../rocket/rocket.service';
 
 /**
  * Live updates. Clients connect (optionally with their token), then `join` a room and receive `state`
@@ -28,9 +29,13 @@ export class GameGateway implements OnGatewayConnection, OnModuleInit {
     private readonly auth: AuthGuard,
     private readonly notify: NotifyService,
     private readonly wallet: WalletService,
+    private readonly rocket: RocketService,
   ) {}
 
   onModuleInit() {
+    this.rocket.on('state', () => {
+      this.server?.to('rocket').emit('rocket', this.rocket.publicState());
+    });
     this.game.on('state', (roomId) => {
       this.server?.to(`room:${roomId}`).emit('state', this.game.publicState(roomId));
     });
@@ -49,6 +54,14 @@ export class GameGateway implements OnGatewayConnection, OnModuleInit {
       socket.data.userId = user.id;
       void socket.join(`user:${user.id}`);
     }
+  }
+
+  /** Leyu Rocket viewers: one shared channel for the whole game. */
+  @SubscribeMessage('rocket:join')
+  async rocketJoin(@ConnectedSocket() socket: Socket) {
+    await socket.join('rocket');
+    socket.emit('rocket', this.rocket.publicState());
+    return { ok: true };
   }
 
   @SubscribeMessage('join')

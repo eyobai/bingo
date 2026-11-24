@@ -19,7 +19,7 @@ export interface PostingInput {
 }
 
 /** System accounts that may go below zero: they record money that came from or left to the outside. */
-const ALLOW_NEGATIVE: AccountType[] = [AccountType.PAYMENT_CLEARING, AccountType.PROMOTIONS, AccountType.ADJUSTMENTS, AccountType.HOUSE_CAPITAL];
+const ALLOW_NEGATIVE: AccountType[] = [AccountType.PAYMENT_CLEARING, AccountType.PROMOTIONS, AccountType.ADJUSTMENTS, AccountType.HOUSE_CAPITAL, AccountType.ROCKET_HOUSE];
 const USER_TYPES: AccountType[] = [AccountType.USER_MAIN, AccountType.USER_PLAY, AccountType.USER_WITHDRAW_HOLD];
 
 export interface UserAccounts {

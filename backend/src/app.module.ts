@@ -5,6 +5,8 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminController, StaffAuthController } from './admin.controller';
 import { AuditService } from './audit.service';
+import { RocketController } from './rocket/rocket.controller';
+import { RocketService } from './rocket/rocket.service';
 import { HouseBankrollService } from './ledger/house-bankroll.service';
 import { StaffAuthService } from './auth/staff-auth.service';
 import { AuthController, GameController, MeController, PaymentsController } from './api.controllers';
@@ -47,7 +49,7 @@ const config = loadConfig();
 
 @Module({
   imports: [PrismaModule, NotifyModule, JwtModule.register({ secret: config.jwtSecret })],
-  controllers: [HealthController, AuthController, MeController, GameController, PaymentsController, AdminController, StaffAuthController],
+  controllers: [HealthController, AuthController, MeController, GameController, PaymentsController, AdminController, StaffAuthController, RocketController],
   providers: [
     { provide: APP_CONFIG, useValue: config },
     AuthGuard,
@@ -60,6 +62,7 @@ const config = loadConfig();
     UsersService,
     PaymentsService,
     GameService,
+    RocketService,
     GameGateway,
     BotService,
     StaffAuthService,
