@@ -152,6 +152,7 @@ const en = {
     `❌ Your deposit (ref ${ref}) was not approved${note ? `: ${note}` : ''}. Contact support if you sent the money.`,
   withdrawNotEnough: (withdrawable: string, min: string) =>
     `⚠️ <b>Not enough to withdraw</b>\n${LINE}\nMinimum withdrawal: <b>${min} birr</b>\nYour withdrawable balance: <b>${withdrawable} birr</b>\n\nBonus money can't be withdrawn, but what you win with it can.`,
+  withdrawNeedsDeposit: `🔒 <b>Make a deposit first</b>\n${LINE}\nWithdrawals open after your first approved deposit.\nPress 💰 Deposit, send with Telebirr and paste the SMS.\n\nYour winnings stay safe in your main wallet until then.`,
   withdrawAmount: (main: string, min: string) => `💸 <b>Withdraw</b>\n\nYou can withdraw up to <b>${main} birr</b>.\nType the amount (minimum ${min}):`,
   withdrawBadAmount: (main: string, min: string) => `Type a whole number between ${min} and ${main}.`,
   withdrawMethod: 'Where should we send it?',
@@ -291,6 +292,7 @@ const am: Texts = {
   depositRejected: (ref, note) => `❌ ማስገቢያዎ (ref ${ref}) አልተቀበለም${note ? `፦ ${note}` : ''}። ገንዘቡን ልከው ከሆነ ድጋፍ ያግኙ።`,
   withdrawNotEnough: (withdrawable, min) =>
     `⚠️ <b>ለማውጣት በቂ አይደለም</b>\n${LINE}\nዝቅተኛ ማውጫ፦ <b>${min} ብር</b>\nሊወጣ የሚችል ሂሳብዎ፦ <b>${withdrawable} ብር</b>\n\nቦነስ ማውጣት አይቻልም፤ በእሱ ያሸነፉትን ግን ይቻላል።`,
+  withdrawNeedsDeposit: `🔒 <b>መጀመሪያ ገንዘብ ያስገቡ</b>\n${LINE}\nገንዘብ ማውጣት የሚቻለው የመጀመሪያ ማስገቢያዎ ከጸደቀ በኋላ ነው።\n«💰 ገንዘብ አስገባ» ይጫኑ፣ በቴሌብር ይላኩና መልዕክቱን (SMS) ይለጥፉ።\n\nያሸነፉት ገንዘብ እስከዚያው በዋና ሂሳብዎ ውስጥ በደህና ይቆያል።`,
   withdrawAmount: (main, min) => `💸 <b>ገንዘብ ማውጫ</b>\n\nእስከ <b>${main} ብር</b> ማውጣት ይችላሉ።\nመጠኑን ይጻፉ (ዝቅተኛ ${min})፦`,
   withdrawBadAmount: (main, min) => `ከ${min} እስከ ${main} ያለ ሙሉ ቁጥር ይጻፉ።`,
   withdrawMethod: 'ወዴት እንላክልዎ?',
@@ -426,6 +428,7 @@ const om: Texts = {
   depositRejected: (ref, note) => `❌ Galchiin kee (ref ${ref}) hin fudhatamne${note ? `: ${note}` : ''}. Maallaqa ergiteetta yoo ta'e deeggarsa quunnami.`,
   withdrawNotEnough: (withdrawable, min) =>
     `⚠️ <b>Baasuuf hin gahu</b>\n${LINE}\nBaasii xiqqaa: <b>qarshii ${min}</b>\nHaftee baafamuu danda'u: <b>qarshii ${withdrawable}</b>\n\nMaallaqni boonasii hin baafamu; kan isaan mo'atte garuu ni baafama.`,
+  withdrawNeedsDeposit: `🔒 <b>Jalqaba maallaqa galchi</b>\n${LINE}\nMaallaqa baasuun kan danda'amu erga galchiin kee jalqabaa mirkanaa'ee booda.\n«💰 Maallaqa galchi» tuqi, Telebirr'n ergiitii SMS isaa maxxansi.\n\nMaallaqni ati moo'atte hanga sanaatti waaleetii ijoo keessatti nagaan tursiifama.`,
   withdrawAmount: (main, min) => `💸 <b>Maallaqa baasi</b>\n\nHanga <b>qarshii ${main}</b> baasuu dandeessa.\nHamma isaa barreessi (xiqqaate ${min}):`,
   withdrawBadAmount: (main, min) => `Lakkoofsa guutuu ${min} fi ${main} gidduu jiru barreessi.`,
   withdrawMethod: 'Eessatti siif erginu?',

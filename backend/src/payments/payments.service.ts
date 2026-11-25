@@ -5,7 +5,7 @@ import { AppError, isUniqueViolation, money } from '../common/common';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { LedgerService } from '../ledger/ledger.service';
 import { NotifyService } from '../notify.service';
-import { PrismaService } from '../prisma.service';
+import { PrismaService, type Tx } from '../prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 import { parsePaymentSms } from './sms-parser';
 
@@ -65,6 +65,12 @@ export class PaymentsService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
+  /** False while the deposit rule is on and the player has no approved deposit yet. */
+  async mayWithdraw(userId: string, tx?: Tx): Promise<boolean> {
+    if (!this.config.money.withdrawRequiresDeposit) return true;
+    return (await (tx ?? this.prisma).deposit.count({ where: { userId, status: DepositStatus.APPROVED } })) > 0;
+  }
+
   options() {
     const methods = (Object.keys(METHOD_LABEL) as PaymentMethod[])
       .filter((m) => this.config.paymentAccounts[m].account)
@@ -79,6 +85,7 @@ export class PaymentsService {
       depositMin: money(this.config.money.depositMinMinor),
       withdrawMin: money(this.config.money.withdrawMinMinor),
       firstDepositBonusPercent: this.config.money.firstDepositBonusPercent,
+      withdrawRequiresDeposit: this.config.money.withdrawRequiresDeposit,
     };
   }
 
@@ -208,6 +215,9 @@ export class PaymentsService {
     const w = await this.ledger.withTx(async (tx) => {
       const owner = await tx.user.findUniqueOrThrow({ where: { id: userId } });
       if (owner.isBlocked) throw new AppError(HttpStatus.FORBIDDEN, 'BLOCKED', 'Your account is blocked. Contact support.');
+      if (!(await this.mayWithdraw(userId, tx))) {
+        throw new AppError(HttpStatus.FORBIDDEN, 'WITHDRAW_NEEDS_DEPOSIT', 'Make a deposit first: withdrawals open after your first approved deposit.');
+      }
       const { main, hold } = await this.ledger.userAccounts(userId, tx);
       // Locks the main account first so two requests at once cannot both pass the "one pending" check.
       await tx.$queryRaw`SELECT id FROM ledger_accounts WHERE id = ${main.id}::uuid FOR UPDATE`;

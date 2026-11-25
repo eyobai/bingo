@@ -146,6 +146,22 @@ describe('bingo platform (integration)', () => {
       .send({ method: 'TELEBIRR', accountNumber: '0911223344', accountName: 'Alice A', amountBirr: '100' })
       .expect(409);
     expect((await balances(alice.token)).pendingWithdrawal.birr).toBe('150');
+    // Staff see where the money came from next to the request.
+    const pendingList = (await http.get('/api/admin/withdrawals?status=PENDING').set(auth(admin.token)).expect(200)).body;
+    const row = pendingList.find((x: any) => x.id === w.body.id);
+    expect(row.stats).toMatchObject({ deposits: 1, deposited: { birr: '200' }, neverDeposited: false, withdrawalsPaid: 0 });
+    expect(Number(row.stats.won.birr)).toBe(Number(aliceAfter.main.birr) - 200);
+    // A player who never deposited cannot withdraw, even with winnings in the main wallet.
+    const carol = await login(1003, 'Carol');
+    await http.post(`/api/admin/players/${carol.user.id}/adjust`).set(auth(admin.token)).send({ wallet: 'main', amountBirr: '300', reason: 'test' }).expect(200);
+    const refused = await http
+      .post('/api/payments/withdrawals')
+      .set(auth(carol.token))
+      .send({ method: 'TELEBIRR', accountNumber: '0911000003', accountName: 'Carol C', amountBirr: '150' })
+      .expect(403);
+    expect(refused.body.code).toBe('WITHDRAW_NEEDS_DEPOSIT');
+    expect((await balances(carol.token)).main.birr).toBe('300');
+    expect((await http.get('/api/payments/options').set(auth(carol.token)).expect(200)).body.withdrawRequiresDeposit).toBe(true);
     await http.post(`/api/admin/withdrawals/${w.body.id}/paid`).set(auth(admin.token)).send({ note: 'TB123' }).expect(200);
     expect((await balances(alice.token)).pendingWithdrawal.birr).toBe('0');
     // Players cannot use staff routes.

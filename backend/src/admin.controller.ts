@@ -279,7 +279,54 @@ export class AdminController {
   async withdrawals(@Query('status') status?: string) {
     const where = status && status in WithdrawalStatus ? { status: status as WithdrawalStatus } : {};
     const rows = await this.prisma.withdrawal.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100, include: { user: true } });
-    return rows.map((w) => ({ ...withdrawalView(w), player: { id: w.user.id, name: w.user.firstName, username: w.user.username } }));
+    const stats = await this.withdrawalPlayerStats([...new Set(rows.map((w) => w.userId))]);
+    return rows.map((w) => ({
+      ...withdrawalView(w),
+      player: { id: w.user.id, name: w.user.firstName, username: w.user.username, phone: w.user.phone, joinedAt: w.user.createdAt },
+      stats: stats.get(w.userId),
+    }));
+  }
+
+  /**
+   * Where each player's money came from, to judge a withdrawal at a glance: approved deposits, prizes won
+   * (bingo and Leyu Rocket, into the main wallet), bonus received, and earlier withdrawals.
+   */
+  private async withdrawalPlayerStats(userIds: string[]) {
+    const out = new Map<string, {
+      deposited: ReturnType<typeof money>; deposits: number; won: ReturnType<typeof money>; bonus: ReturnType<typeof money>;
+      paidOut: ReturnType<typeof money>; withdrawalsPaid: number; neverDeposited: boolean; main: ReturnType<typeof money>;
+    }>();
+    if (!userIds.length) return out;
+    const [deposits, paid, ledger, mains] = await Promise.all([
+      this.prisma.deposit.groupBy({ by: ['userId'], where: { userId: { in: userIds }, status: DepositStatus.APPROVED }, _sum: { amountMinor: true }, _count: true }),
+      this.prisma.withdrawal.groupBy({ by: ['userId'], where: { userId: { in: userIds }, status: WithdrawalStatus.PAID }, _sum: { amountMinor: true }, _count: true }),
+      this.prisma.$queryRaw<{ user_id: string; won: bigint | null; bonus: bigint | null }[]>`
+        SELECT a.user_id,
+          SUM(CASE WHEN t.type IN ('ROUND_SETTLEMENT', 'ROCKET_PAYOUT') AND a.type = 'USER_MAIN' AND e.amount_minor > 0 THEN e.amount_minor END)::bigint AS won,
+          SUM(CASE WHEN t.type = 'BONUS' AND a.type = 'USER_PLAY' AND e.amount_minor > 0 THEN e.amount_minor END)::bigint AS bonus
+        FROM ledger_entries e
+        JOIN ledger_accounts a ON a.id = e.account_id
+        JOIN ledger_transactions t ON t.id = e.transaction_id
+        WHERE a.user_id = ANY(${userIds}::uuid[])
+        GROUP BY a.user_id`,
+      this.prisma.ledgerAccount.findMany({ where: { userId: { in: userIds }, type: AccountType.USER_MAIN }, select: { userId: true, balanceMinor: true } }),
+    ]);
+    for (const id of userIds) {
+      const d = deposits.find((x) => x.userId === id);
+      const p = paid.find((x) => x.userId === id);
+      const l = ledger.find((x) => x.user_id === id);
+      out.set(id, {
+        deposited: money(d?._sum.amountMinor ?? 0n),
+        deposits: d?._count ?? 0,
+        won: money(l?.won ?? 0n),
+        bonus: money(l?.bonus ?? 0n),
+        paidOut: money(p?._sum.amountMinor ?? 0n),
+        withdrawalsPaid: p?._count ?? 0,
+        neverDeposited: !d,
+        main: money(mains.find((m) => m.userId === id)?.balanceMinor ?? 0n),
+      });
+    }
+    return out;
   }
 
   @Post('withdrawals/:id/paid')

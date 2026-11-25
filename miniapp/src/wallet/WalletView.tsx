@@ -7,6 +7,8 @@ interface Options {
   depositMin: Money;
   withdrawMin: Money;
   firstDepositBonusPercent: number;
+  /** Withdrawals open after the player's first approved deposit. */
+  withdrawRequiresDeposit?: boolean;
 }
 interface HistoryRow {
   id: string;
@@ -31,16 +33,19 @@ export function WalletView({ wallet, initialTab = 'deposit' }: { wallet: Balance
   const [options, setOptions] = useState<Options | null>(null);
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [requests, setRequests] = useState<(Request & { kind: 'in' | 'out' })[]>([]);
+  /** null until loaded. */
+  const [hasDeposit, setHasDeposit] = useState<boolean | null>(null);
 
   const load = () => {
     void api<{ history: HistoryRow[] }>('/me/wallet').then((r) => setHistory(r.history));
-    void Promise.all([api<Request[]>('/payments/deposits'), api<Request[]>('/payments/withdrawals')]).then(([d, w]) =>
+    void Promise.all([api<Request[]>('/payments/deposits'), api<Request[]>('/payments/withdrawals')]).then(([d, w]) => {
+      setHasDeposit(d.some((x) => x.status === 'APPROVED'));
       setRequests(
         [...d.map((x) => ({ ...x, kind: 'in' as const })), ...w.map((x) => ({ ...x, kind: 'out' as const }))]
           .filter((x) => x.status === 'PENDING')
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-      ),
-    );
+      );
+    });
   };
   useEffect(() => {
     void api<Options>('/payments/options').then(setOptions);
@@ -76,7 +81,16 @@ export function WalletView({ wallet, initialTab = 'deposit' }: { wallet: Balance
       </div>
 
       {options && tab === 'deposit' && <DepositForm options={options} onDone={load} />}
-      {options && tab === 'withdraw' && <WithdrawForm options={options} onDone={load} />}
+      {options && tab === 'withdraw' && options.withdrawRequiresDeposit && hasDeposit === false && (
+        <section className="flex flex-col gap-2 rounded-2xl border border-gold/50 bg-panel p-4 text-sm">
+          <p className="font-display text-base">🔒 {t('withdrawNeedsDeposit')}</p>
+          <p className="text-muted">{t('withdrawNeedsDepositSub')}</p>
+          <button type="button" onClick={() => setTab('deposit')} className="mt-1 w-fit rounded-xl bg-gold px-4 py-2 font-display text-sm text-gold-ink">
+            {t('deposit')}
+          </button>
+        </section>
+      )}
+      {options && tab === 'withdraw' && !(options.withdrawRequiresDeposit && hasDeposit === false) && <WithdrawForm options={options} onDone={load} />}
 
       {requests.length > 0 && (
         <section className="flex flex-col gap-1.5">
@@ -266,7 +280,7 @@ function WithdrawForm({ options, onDone }: { options: Options; onDone: () => voi
       setMsg({ ok: true, text: t('withdrawSent') });
       onDone();
     } catch (err) {
-      setMsg({ ok: false, text: err instanceof ApiError ? err.message : String(err) });
+      setMsg({ ok: false, text: err instanceof ApiError ? (err.code === 'WITHDRAW_NEEDS_DEPOSIT' ? t('withdrawNeedsDeposit') : err.message) : String(err) });
     } finally {
       setSending(false);
     }

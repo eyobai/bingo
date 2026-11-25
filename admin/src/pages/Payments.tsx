@@ -25,6 +25,69 @@ interface Withdrawal {
   note: string | null;
   createdAt: string;
   player: { id: string; name: string; username: string | null };
+  stats?: {
+    deposited: Money;
+    deposits: number;
+    won: Money;
+    bonus: Money;
+    paidOut: Money;
+    withdrawalsPaid: number;
+    neverDeposited: boolean;
+    main: Money;
+  };
+}
+
+/** Where the player's money came from, so a withdrawal can be judged at a glance. */
+function MoneyTrail({ s, amount }: { s: NonNullable<Withdrawal['stats']>; amount: Money }) {
+  const n = (m: Money) => Number(m.birr);
+  // More out than in (deposits + prizes) is worth a closer look before paying.
+  const outsized = n(amount) + n(s.paidOut) > n(s.deposited) + n(s.won) + 0.01;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {s.neverDeposited && (
+        <p className="rounded-lg border border-bad/50 bg-bad-soft px-3 py-1.5 text-sm font-semibold">
+          ⚠ Never deposited: this money comes only from prizes won with bonus. Check the player's history before paying.
+        </p>
+      )}
+      {outsized && (
+        <p className="rounded-lg border border-bad/50 bg-bad-soft px-3 py-1.5 text-sm font-semibold">
+          ⚠ Asks for more than they ever deposited plus won. Check the player's history before paying.
+        </p>
+      )}
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 rounded-lg border border-line px-3 py-2 text-xs sm:grid-cols-5">
+        <div>
+          <dt className="text-muted">Deposited</dt>
+          <dd className="font-semibold">
+            <Birr m={s.deposited} /> <span className="text-muted">({s.deposits})</span>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted">Won (prizes)</dt>
+          <dd className="font-semibold">
+            <Birr m={s.won} />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted">Bonus received</dt>
+          <dd className="font-semibold">
+            <Birr m={s.bonus} />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted">Withdrawn before</dt>
+          <dd className="font-semibold">
+            <Birr m={s.paidOut} /> <span className="text-muted">({s.withdrawalsPaid})</span>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted">Main wallet now</dt>
+          <dd className="font-semibold">
+            <Birr m={s.main} /> <span className="text-muted">(after hold)</span>
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
 }
 
 const METHOD: Record<string, string> = { TELEBIRR: 'Telebirr', CBE_BIRR: 'CBE Birr' };
@@ -255,6 +318,7 @@ function WithdrawalRow({ w, onDone, openPlayer }: { w: Withdrawal; onDone: () =>
         {w.payoutRef && <span className="text-muted">Payout ref: {w.payoutRef}</span>}
         {w.note && <span className="text-muted">Note: {w.note}</span>}
       </div>
+      {w.stats && w.status === 'PENDING' && <MoneyTrail s={w.stats} amount={w.amount} />}
       {w.status === 'PENDING' && mode === 'none' && (
         <div className="flex flex-wrap gap-2">
           <Button tone="good" onClick={() => setMode('paid')}>

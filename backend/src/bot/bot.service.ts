@@ -323,7 +323,8 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
         await this.payments.requestWithdrawal(user.id, { method: f.method!, accountNumber: f.account!, accountName: f.name!, amountMinor: f.amount! });
         await ctx.reply(t.withdrawSent(money(f.amount!).birr), { parse_mode: 'HTML', reply_markup: this.mainMenu(user.language) });
       } catch (e) {
-        await ctx.reply(e instanceof AppError ? `⚠️ ${e.message}` : t.error, { reply_markup: this.mainMenu(user.language) });
+        const text = e instanceof AppError ? (e.code === 'WITHDRAW_NEEDS_DEPOSIT' ? t.withdrawNeedsDeposit : `⚠️ ${e.message}`) : t.error;
+        await ctx.reply(text, { parse_mode: 'HTML', reply_markup: this.mainMenu(user.language) });
       }
     });
 
@@ -457,6 +458,10 @@ export class BotService implements OnApplicationBootstrap, OnModuleDestroy {
       methods.forEach((m) => kb.text(m.label, `dep:${m.method}`).row());
       await ctx.reply(t.depositChoose(depositMin.birr), { parse_mode: 'HTML', reply_markup: kb });
     } else if (action === 'withdraw') {
+      if (!(await this.payments.mayWithdraw(user.id))) {
+        await ctx.reply(t.withdrawNeedsDeposit, { parse_mode: 'HTML' });
+        return;
+      }
       const b = await this.wallet.balancesMinor(user.id);
       const min = this.config.money.withdrawMinMinor;
       if (b.main < min) {

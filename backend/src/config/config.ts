@@ -26,6 +26,8 @@ export const envSchema = Joi.object({
 
   DEPOSIT_MIN_BIRR: Joi.number().integer().min(1).default(100),
   WITHDRAW_MIN_BIRR: Joi.number().integer().min(1).default(100),
+  /** A player needs at least one approved deposit before they can withdraw. */
+  WITHDRAW_REQUIRES_DEPOSIT: Joi.boolean().default(true),
   FIRST_DEPOSIT_BONUS_PERCENT: Joi.number().integer().min(0).max(100).default(20),
   FIRST_DEPOSIT_BONUS_MAX_BIRR: Joi.number().integer().min(0).default(200),
   REFERRAL_BONUS_BIRR: Joi.number().integer().min(0).default(10),
@@ -64,6 +66,7 @@ export interface AppConfig {
   money: {
     depositMinMinor: bigint;
     withdrawMinMinor: bigint;
+    withdrawRequiresDeposit: boolean;
     firstDepositBonusPercent: number;
     firstDepositBonusMaxMinor: bigint;
     referralBonusMinor: bigint;
@@ -106,6 +109,7 @@ export function buildConfig(env: Record<string, any>): AppConfig {
     money: {
       depositMinMinor: birr(env.DEPOSIT_MIN_BIRR),
       withdrawMinMinor: birr(env.WITHDRAW_MIN_BIRR),
+      withdrawRequiresDeposit: env.WITHDRAW_REQUIRES_DEPOSIT,
       firstDepositBonusPercent: env.FIRST_DEPOSIT_BONUS_PERCENT,
       firstDepositBonusMaxMinor: birr(env.FIRST_DEPOSIT_BONUS_MAX_BIRR),
       referralBonusMinor: birr(env.REFERRAL_BONUS_BIRR),
