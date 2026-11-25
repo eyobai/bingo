@@ -34,7 +34,29 @@ interface Withdrawal {
     withdrawalsPaid: number;
     neverDeposited: boolean;
     main: Money;
+    held: Money;
   };
+}
+
+/**
+ * Did the player have the money? The amount is taken from the main wallet into a hold the moment they ask,
+ * so a pending request is covered when the hold holds at least that much.
+ */
+function BalanceCheck({ s, amount }: { s: NonNullable<Withdrawal['stats']>; amount: Money }) {
+  const held = Number(s.held.birr);
+  const asked = Number(amount.birr);
+  const had = held + Number(s.main.birr);
+  const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return held + 0.001 >= asked ? (
+    <p className="rounded-lg border border-good/40 bg-good-soft px-3 py-1.5 text-sm">
+      <b className="text-good">✓ Enough balance.</b> Had {fmt(had)} birr in the main wallet when asking; {fmt(asked)} birr is held for this payout, {fmt(Number(s.main.birr))}{' '}
+      birr left.
+    </p>
+  ) : (
+    <p className="rounded-lg border border-bad/50 bg-bad-soft px-3 py-1.5 text-sm">
+      <b className="text-bad">✗ Not enough balance.</b> Asked {fmt(asked)} birr but only {fmt(held)} birr is held. Reject it and check the player's history.
+    </p>
+  );
 }
 
 /** Where the player's money came from, so a withdrawal can be judged at a glance. */
@@ -46,7 +68,7 @@ function MoneyTrail({ s, amount }: { s: NonNullable<Withdrawal['stats']>; amount
     <div className="flex flex-col gap-1.5">
       {s.neverDeposited && (
         <p className="rounded-lg border border-bad/50 bg-bad-soft px-3 py-1.5 text-sm font-semibold">
-          ⚠ Never deposited: this money comes only from prizes won with bonus. Check the player's history before paying.
+          ⚠ Never deposited. Check in the player's history where this money came from before paying.
         </p>
       )}
       {outsized && (
@@ -308,6 +330,7 @@ function WithdrawalRow({ w, onDone, openPlayer }: { w: Withdrawal; onDone: () =>
           <Badge value={w.status} />
         </div>
       </div>
+      {w.stats && w.status === 'PENDING' && <BalanceCheck s={w.stats} amount={w.amount} />}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-panel-2 px-3 py-2 text-sm">
         <span>
           {METHOD[w.method] ?? w.method}: <b className="num select-all">{w.accountNumber}</b>

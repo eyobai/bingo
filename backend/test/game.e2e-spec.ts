@@ -149,7 +149,7 @@ describe('bingo platform (integration)', () => {
     // Staff see where the money came from next to the request.
     const pendingList = (await http.get('/api/admin/withdrawals?status=PENDING').set(auth(admin.token)).expect(200)).body;
     const row = pendingList.find((x: any) => x.id === w.body.id);
-    expect(row.stats).toMatchObject({ deposits: 1, deposited: { birr: '200' }, neverDeposited: false, withdrawalsPaid: 0 });
+    expect(row.stats).toMatchObject({ deposits: 1, deposited: { birr: '200' }, neverDeposited: false, withdrawalsPaid: 0, held: { birr: '150' } });
     expect(Number(row.stats.won.birr)).toBe(Number(aliceAfter.main.birr) - 200);
     // A player who never deposited cannot withdraw, even with winnings in the main wallet.
     const carol = await login(1003, 'Carol');

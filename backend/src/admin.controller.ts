@@ -295,6 +295,7 @@ export class AdminController {
     const out = new Map<string, {
       deposited: ReturnType<typeof money>; deposits: number; won: ReturnType<typeof money>; bonus: ReturnType<typeof money>;
       paidOut: ReturnType<typeof money>; withdrawalsPaid: number; neverDeposited: boolean; main: ReturnType<typeof money>;
+      held: ReturnType<typeof money>;
     }>();
     if (!userIds.length) return out;
     const [deposits, paid, ledger, mains] = await Promise.all([
@@ -309,7 +310,10 @@ export class AdminController {
         JOIN ledger_transactions t ON t.id = e.transaction_id
         WHERE a.user_id = ANY(${userIds}::uuid[])
         GROUP BY a.user_id`,
-      this.prisma.ledgerAccount.findMany({ where: { userId: { in: userIds }, type: AccountType.USER_MAIN }, select: { userId: true, balanceMinor: true } }),
+      this.prisma.ledgerAccount.findMany({
+        where: { userId: { in: userIds }, type: { in: [AccountType.USER_MAIN, AccountType.USER_WITHDRAW_HOLD] } },
+        select: { userId: true, type: true, balanceMinor: true },
+      }),
     ]);
     for (const id of userIds) {
       const d = deposits.find((x) => x.userId === id);
@@ -323,7 +327,9 @@ export class AdminController {
         paidOut: money(p?._sum.amountMinor ?? 0n),
         withdrawalsPaid: p?._count ?? 0,
         neverDeposited: !d,
-        main: money(mains.find((m) => m.userId === id)?.balanceMinor ?? 0n),
+        main: money(mains.find((m) => m.userId === id && m.type === AccountType.USER_MAIN)?.balanceMinor ?? 0n),
+        /** Taken from the main wallet when the player asked; pays the pending withdrawal. */
+        held: money(mains.find((m) => m.userId === id && m.type === AccountType.USER_WITHDRAW_HOLD)?.balanceMinor ?? 0n),
       });
     }
     return out;
