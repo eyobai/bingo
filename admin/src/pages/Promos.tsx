@@ -33,6 +33,7 @@ export function Promos({ openPlayer }: { openPlayer: (id: string) => void }) {
   const [openId, setOpenId] = useState<string | null>(null);
   return (
     <div className="flex flex-col gap-4">
+      <ClearBonus openPlayer={openPlayer} />
       <CreatePromo onCreated={list.reload} />
       <Panel title="Promo codes">
         <ErrorLine error={list.error} />
@@ -47,13 +48,98 @@ export function Promos({ openPlayer }: { openPlayer: (id: string) => void }) {
   );
 }
 
+interface NonDepositors {
+  players: number;
+  total: Money;
+  top: { id: string; name: string; username: string | null; bonus: Money }[];
+}
+
+/** Takes back unused play-wallet bonus from players who never deposited. Main-wallet money is never touched. */
+function ClearBonus({ openPlayer }: { openPlayer: (id: string) => void }) {
+  const toast = useToast();
+  const preview = useApi<NonDepositors>('/admin/bonus/non-depositors', 30_000);
+  const [reason, setReason] = useState('Bonus is now for players who have deposited');
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const d = preview.data;
+
+  const run = async () => {
+    if (!d) return;
+    setBusy(true);
+    try {
+      const r = await api<{ players: number; total: Money }>('/admin/bonus/clear-non-depositors', { body: { expectedPlayers: d.players, reason } });
+      toast(`Removed ${Number(r.total.birr).toLocaleString('en-US')} birr of unused bonus from ${r.players} player(s).`);
+      setConfirm(false);
+      preview.reload();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : String(e), 'bad');
+      preview.reload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Panel title="Unused bonus of players who never deposited" action={d && <Birr m={d.total} />}>
+      <ErrorLine error={preview.error} />
+      <div className="flex flex-col gap-3 p-4 text-sm">
+        <p className="text-xs text-muted">
+          Players with no approved or pending deposit who still have money in their play wallet (bonus). Removing it sets their play wallet to 0. Their
+          main wallet (winnings) is not touched, cards already bought are not affected, and each removal shows in the player's history as "Unused bonus
+          removed". Players who deposit later get bonuses as usual.
+        </p>
+        {d && d.players === 0 && <p className="font-semibold text-good">✓ No player without a deposit holds bonus money.</p>}
+        {d && d.players > 0 && (
+          <>
+            <p>
+              <b>{d.players}</b> player(s) hold <b>{Number(d.total.birr).toLocaleString('en-US')} birr</b> of bonus.
+              {d.players > d.top.length && ` Largest ${d.top.length} shown.`}
+            </p>
+            <ul className="flex flex-wrap gap-1.5 text-xs">
+              {d.top.map((t) => (
+                <li key={t.id}>
+                  <button type="button" onClick={() => openPlayer(t.id)} className="rounded-full bg-panel-2 px-2 py-0.5 hover:underline">
+                    {t.name}
+                    {t.username ? ` @${t.username}` : ''} · {Number(t.bonus.birr).toLocaleString('en-US')} birr
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+              Reason (kept in the history and audit trail)
+              <input value={reason} onChange={(e) => setReason(e.target.value)} className={field} />
+            </label>
+            {!confirm ? (
+              <Button tone="bad" className="w-fit" disabled={reason.trim().length < 3} onClick={() => setConfirm(true)}>
+                Remove unused bonus…
+              </Button>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-bad/50 bg-bad-soft px-3 py-2">
+                <span>
+                  Remove {Number(d.total.birr).toLocaleString('en-US')} birr from {d.players} player(s)? This cannot be undone from here.
+                </span>
+                <Button tone="bad" disabled={busy} onClick={() => void run()}>
+                  {busy ? 'Removing…' : 'Yes, remove it'}
+                </Button>
+                <Button disabled={busy} onClick={() => setConfirm(false)}>
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 function CreatePromo({ onCreated }: { onCreated: () => void }) {
   const toast = useToast();
   const [code, setCode] = useState('');
   const [amount, setAmount] = useState('20');
   const [maxUses, setMaxUses] = useState('100');
   const [expires, setExpires] = useState('');
-  const [requiresDeposit, setRequiresDeposit] = useState(false);
+  const [requiresDeposit, setRequiresDeposit] = useState(true);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const cost = Number(amount || 0) * Number(maxUses || 0);
@@ -137,11 +223,11 @@ function PromoRow({ p, open, onToggleOpen, onChanged, openPlayer }: { p: Promo; 
   const redemptions = useApi<Redemption[]>(open ? `/admin/promos/${p.id}/redemptions` : null);
   const [badgeValue, badgeLabel] = STATE[p.state];
 
-  const toggle = async () => {
+  const patch = async (body: Record<string, boolean>, ok: string) => {
     setBusy(true);
     try {
-      await api(`/admin/promos/${p.id}`, { method: 'PATCH', body: { isActive: !p.isActive } });
-      toast(p.isActive ? `${p.code} switched off` : `${p.code} switched on`);
+      await api(`/admin/promos/${p.id}`, { method: 'PATCH', body });
+      toast(ok);
       onChanged();
     } catch (e) {
       toast(e instanceof ApiError ? e.message : String(e), 'bad');
@@ -180,8 +266,19 @@ function PromoRow({ p, open, onToggleOpen, onChanged, openPlayer }: { p: Promo; 
         <Button onClick={onToggleOpen} aria-expanded={open}>
           {open ? 'Hide players' : 'Who used it'}
         </Button>
-        <Button tone={p.isActive ? 'bad' : 'good'} disabled={busy} onClick={() => void toggle()}>
+        <Button tone={p.isActive ? 'bad' : 'good'} disabled={busy} onClick={() => void patch({ isActive: !p.isActive }, p.isActive ? `${p.code} switched off` : `${p.code} switched on`)}>
           {p.isActive ? 'Switch off' : 'Switch on'}
+        </Button>
+        <Button
+          disabled={busy}
+          onClick={() =>
+            void patch(
+              { requiresDeposit: !p.requiresDeposit },
+              p.requiresDeposit ? `${p.code} is now open to every player` : `${p.code} is now for players who have deposited`,
+            )
+          }
+        >
+          {p.requiresDeposit ? 'Open to everyone' : 'Depositors only'}
         </Button>
       </div>
       {open && (

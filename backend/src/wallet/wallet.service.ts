@@ -19,6 +19,7 @@ const HISTORY_LABELS: Record<TxType, string> = {
   ROCKET_BET: 'Leyu Rocket bet',
   ROCKET_PAYOUT: 'Leyu Rocket win',
   ROCKET_REFUND: 'Leyu Rocket bet returned',
+  BONUS_REMOVED: 'Unused bonus removed',
 };
 
 @Injectable()

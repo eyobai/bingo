@@ -142,6 +142,8 @@ const ACTION_LABEL: Record<string, string> = {
   ROOM_AUTOMATED_PLAYERS: 'Automated players changed',
   ROOM_UPDATE: 'Room settings changed',
   ROCKET_SETTINGS: 'Leyu Rocket settings changed',
+  PROMO_DEPOSIT_RULE: 'Promo code deposit rule changed',
+  BONUS_CLEARED_NON_DEPOSITORS: 'Unused bonus removed (players without a deposit)',
   BANKROLL_FUND: 'Bankroll funded',
   BANKROLL_WITHDRAW: 'Bankroll withdrawal',
 };

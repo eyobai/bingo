@@ -112,6 +112,8 @@ enum TxType {
   ROCKET_BET
   ROCKET_PAYOUT
   ROCKET_REFUND
+  /// Unused play-wallet bonus taken back from a player who never deposited (staff action).
+  BONUS_REMOVED
 }
 
 model LedgerTransaction {

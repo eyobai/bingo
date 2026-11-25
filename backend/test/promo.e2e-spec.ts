@@ -7,6 +7,9 @@ import { AppModule } from '../src/app.module';
 import { LedgerService } from '../src/ledger/ledger.service';
 import { setupApp } from '../src/main';
 
+const sms = (amount: string, ref: string, to = 'ABEBE KEBEDE') =>
+  `Dear x You have transferred ETB ${amount} to ${to} (2519****0000) on 20/11/2026 12:30:58. Your transaction number is ${ref}. The service fee is ETB 1.74.`;
+
 describe('promo codes (integration)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
@@ -78,6 +81,51 @@ describe('promo codes (integration)', () => {
     expect(list.find((p: any) => p.id === exp.id).state).toBe('EXPIRED');
     expect((await http.get(`/api/admin/promos/${welcome.id}/redemptions`).set(auth(staff)).expect(200)).body).toHaveLength(2);
 
+    expect(await app.get(LedgerService).trialBalance()).toBe(0n);
+  });
+
+  it('switches a code to depositors only, and removes unused bonus from players who never deposited', async () => {
+    const staff = await login(1, 'Staff');
+    const gift = (await http.post('/api/admin/promos').set(auth(staff)).send({ code: 'GIFT10', amountBirr: 10, requiresDeposit: false }).expect(201)).body;
+    const noDeposit = await login(701, 'Dawit');
+    const depositor = await login(702, 'Eleni');
+    const pending = await login(703, 'Fikir');
+    for (const t of [noDeposit, depositor, pending]) await http.post('/api/me/promo').set(auth(t)).send({ code: 'GIFT10' }).expect(200);
+    // Eleni deposits (approved); Fikir's deposit is still waiting for approval.
+    const d = await http.post('/api/payments/deposits').set(auth(depositor)).send({ method: 'TELEBIRR', smsText: sms('200.00', 'BONUSTEST01') }).expect(201);
+    await http.post(`/api/admin/deposits/${d.body.id}/approve`).set(auth(staff)).send({}).expect(200);
+    await http.post('/api/payments/deposits').set(auth(pending)).send({ method: 'TELEBIRR', smsText: sms('200.00', 'BONUSTEST02') }).expect(201);
+
+    // From now on the code is for depositors only.
+    await http.patch(`/api/admin/promos/${gift.id}`).set(auth(staff)).send({ requiresDeposit: true }).expect(200);
+    const late = await login(704, 'Genet');
+    expect((await http.post('/api/me/promo').set(auth(late)).send({ code: 'GIFT10' }).expect(403)).body.code).toBe('PROMO_NEEDS_DEPOSIT');
+
+    // Preview lists Dawit (and earlier test players without a deposit), never Eleni or Fikir.
+    const preview = (await http.get('/api/admin/bonus/non-depositors').set(auth(staff)).expect(200)).body;
+    const names = preview.top.map((p: any) => p.name);
+    expect(names).toContain('Dawit');
+    expect(names).not.toContain('Eleni');
+    expect(names).not.toContain('Fikir');
+    expect(Number(preview.total.birr)).toBeGreaterThan(0);
+    const players = await http.get('/api/admin/bonus/non-depositors').set(auth(noDeposit)).expect(403);
+    expect(players.status).toBe(403);
+
+    const eleniPlay = await play(depositor);
+    const fikirPlay = await play(pending);
+    await http.post('/api/admin/bonus/clear-non-depositors').set(auth(staff)).send({ expectedPlayers: preview.players + 50, reason: 'test' }).expect(409);
+    const done = (await http.post('/api/admin/bonus/clear-non-depositors').set(auth(staff)).send({ expectedPlayers: preview.players, reason: 'Bonus for depositors only' }).expect(200)).body;
+    expect(done).toMatchObject({ players: preview.players, total: preview.total });
+    expect(await play(noDeposit)).toBe('0');
+    expect(await play(depositor)).toBe(eleniPlay);
+    expect(await play(pending)).toBe(fikirPlay);
+    expect((await http.get('/api/admin/bonus/non-depositors').set(auth(staff)).expect(200)).body.players).toBe(0);
+
+    const history = (await http.get('/api/me/wallet').set(auth(noDeposit)).expect(200)).body;
+    expect(JSON.stringify(history)).toContain('Unused bonus removed');
+    const audit = (await http.get('/api/admin/audit').set(auth(staff)).expect(200)).body;
+    expect(audit.find((e: any) => e.action === 'BONUS_CLEARED_NON_DEPOSITORS')).toMatchObject({ after: { players: preview.players, reason: 'Bonus for depositors only' } });
+    expect(audit.find((e: any) => e.action === 'PROMO_DEPOSIT_RULE')).toMatchObject({ targetId: 'GIFT10', after: { requiresDeposit: true } });
     expect(await app.get(LedgerService).trialBalance()).toBe(0n);
   });
 });

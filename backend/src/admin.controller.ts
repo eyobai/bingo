@@ -14,6 +14,7 @@ import { AdminOnly, AppError, CurrentUser, Public, money, type AuthUser } from '
 import { LedgerService } from './ledger/ledger.service';
 import { HouseBankrollService } from './ledger/house-bankroll.service';
 import { AuditService } from './audit.service';
+import { NotifyService } from './notify.service';
 import { PaymentsService, depositView, withdrawalView } from './payments/payments.service';
 import { PrismaService } from './prisma.service';
 
@@ -51,6 +52,13 @@ class PromoCreateDto {
 }
 class PromoUpdateDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
+  /** Only players with an approved deposit can use the code. */
+  @IsOptional() @IsBoolean() requiresDeposit?: boolean;
+}
+class ClearBonusDto {
+  /** The number of players the staff member saw in the preview; the action stops if it has changed a lot. */
+  @Type(() => Number) @IsInt() @Min(0) expectedPlayers!: number;
+  @IsString() @Length(3, 200) reason!: string;
 }
 class BroadcastDto {
   @IsString() @Length(1, 4000) text!: string;
@@ -106,6 +114,7 @@ export class AdminController {
     private readonly bot: BotService,
     private readonly bankroll: HouseBankrollService,
     private readonly audit: AuditService,
+    private readonly notify: NotifyService,
   ) {}
 
   @Get('summary')
@@ -658,8 +667,105 @@ export class AdminController {
   }
 
   @Patch('promos/:id')
-  async updatePromo(@Param('id') id: string, @Body() body: PromoUpdateDto) {
-    return promoView(await this.prisma.promoCode.update({ where: { id }, data: { isActive: body.isActive } }));
+  async updatePromo(@CurrentUser() staff: AuthUser, @Param('id') id: string, @Body() body: PromoUpdateDto) {
+    const before = await this.prisma.promoCode.findUniqueOrThrow({ where: { id } });
+    const updated = await this.prisma.promoCode.update({
+      where: { id },
+      data: {
+        ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+        ...(body.requiresDeposit !== undefined ? { requiresDeposit: body.requiresDeposit } : {}),
+      },
+    });
+    if (body.requiresDeposit !== undefined && body.requiresDeposit !== before.requiresDeposit) {
+      await this.audit.record({
+        staffId: staff.id,
+        action: 'PROMO_DEPOSIT_RULE',
+        targetType: 'PromoCode',
+        targetId: before.code,
+        before: { requiresDeposit: before.requiresDeposit },
+        after: { requiresDeposit: updated.requiresDeposit },
+      });
+    }
+    return promoView(updated);
+  }
+
+  /**
+   * Players who never deposited (no approved or pending deposit) and still hold play-wallet bonus.
+   * Only the play wallet: winnings in the main wallet are never touched.
+   */
+  private nonDepositorBonusAccounts() {
+    return this.prisma.ledgerAccount.findMany({
+      where: {
+        type: AccountType.USER_PLAY,
+        balanceMinor: { gt: 0n },
+        user: { deposits: { none: { status: { in: [DepositStatus.APPROVED, DepositStatus.PENDING] } } } },
+      },
+      orderBy: { balanceMinor: 'desc' },
+      select: { id: true, userId: true, balanceMinor: true, user: { select: { firstName: true, username: true } } },
+    });
+  }
+
+  @Get('bonus/non-depositors')
+  async nonDepositorBonus() {
+    const rows = await this.nonDepositorBonusAccounts();
+    const total = rows.reduce((t, r) => t + r.balanceMinor, 0n);
+    return {
+      players: rows.length,
+      total: money(total),
+      top: rows.slice(0, 20).map((r) => ({ id: r.userId, name: r.user?.firstName ?? '', username: r.user?.username ?? null, bonus: money(r.balanceMinor) })),
+    };
+  }
+
+  /**
+   * Takes back the unused play-wallet bonus of every player who never deposited. Each player is checked again
+   * inside their own transaction (still no deposit, balance re-read under lock), and the money goes back to
+   * PROMOTIONS, where bonuses come from, so the books stay balanced. One audit entry records the whole run.
+   */
+  @Post('bonus/clear-non-depositors')
+  @HttpCode(HttpStatus.OK)
+  async clearNonDepositorBonus(@CurrentUser() staff: AuthUser, @Body() body: ClearBonusDto) {
+    const rows = await this.nonDepositorBonusAccounts();
+    if (Math.abs(rows.length - body.expectedPlayers) > Math.max(5, body.expectedPlayers * 0.1)) {
+      throw new AppError(HttpStatus.CONFLICT, 'PREVIEW_STALE', `The number of players changed (${rows.length} now). Check the preview again.`);
+    }
+    const run = `${Date.now().toString(36)}-${randomInt(1_000_000).toString(36)}`;
+    let players = 0;
+    let total = 0n;
+    for (const r of rows) {
+      const taken = await this.ledger.withTx(async (tx) => {
+        const promotions = await this.ledger.systemAccount(AccountType.PROMOTIONS, tx);
+        const balance = (await this.ledger.lockAccounts(tx, [r.id, promotions.id])).get(r.id)!.balance_minor;
+        const deposits = await tx.deposit.count({ where: { userId: r.userId!, status: { in: [DepositStatus.APPROVED, DepositStatus.PENDING] } } });
+        if (balance <= 0n || deposits > 0) return 0n;
+        await this.ledger.post(
+          {
+            type: TxType.BONUS_REMOVED,
+            description: `Unused bonus removed (no deposit): ${body.reason}`,
+            idempotencyKey: `bonus-clear:${run}:${r.userId}`,
+            metadata: { staffId: staff.id, run, reason: body.reason },
+            lines: [
+              { accountId: r.id, amountMinor: -balance },
+              { accountId: promotions.id, amountMinor: balance },
+            ],
+          },
+          tx,
+        );
+        return balance;
+      });
+      if (taken > 0n) {
+        players++;
+        total += taken;
+        this.notify.emit('walletChanged', r.userId!);
+      }
+    }
+    await this.audit.record({
+      staffId: staff.id,
+      action: 'BONUS_CLEARED_NON_DEPOSITORS',
+      targetType: 'Players',
+      targetId: run,
+      after: { players, totalBirr: money(total).birr, reason: body.reason },
+    });
+    return { players, total: money(total) };
   }
 
   @Get('promos/:id/redemptions')
