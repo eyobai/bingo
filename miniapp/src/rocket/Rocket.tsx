@@ -303,7 +303,10 @@ function BetPanel({ slot, state, mine, x, onMine, onNeedMoney, toast }: { slot: 
   const [autoX, setAutoX] = useState('2.00');
   const [queued, setQueued] = useState(false);
   const [busy, setBusy] = useState(false);
-  const chips = useMemo(() => [1, 2, 5, 10].map((k) => min * k).filter((v) => v <= max), [min, max]);
+  // Quick amounts: the lowest bet, then round numbers above it.
+  const chips = useMemo(() => [min, ...[5, 10, 20, 50, 100, 200, 500].filter((v) => v > min && v <= max)].slice(0, 4), [min, max]);
+  // Keeps the stake inside the limits when staff change them.
+  useEffect(() => setStake((s) => Math.min(max, Math.max(min, s))), [min, max]);
 
   const bet = mine && mine.roundId === r.id ? mine.current.find((b) => b.slot === slot) : undefined;
   const live = bet && bet.status === 'PLACED' && r.status === 'FLYING';
@@ -385,6 +388,7 @@ function BetPanel({ slot, state, mine, x, onMine, onNeedMoney, toast }: { slot: 
               </button>
             ))}
           </div>
+          <p className="text-center text-[10px] font-bold text-muted">{t('rocketMinMax', { min: limits.minBet.birr, max: limits.maxBet.birr })}</p>
           {mode === 'auto' && (
             <label className="flex items-center justify-between gap-2 rounded-lg bg-panel-2 px-2 py-1 text-[11px] font-bold text-muted">
               {t('rocketAutoAt')}
@@ -434,7 +438,7 @@ export function RocketTile({ onOpen }: { onOpen: () => void }) {
     <GameTile
       name="Leyu Rocket"
       tagline={t('rocketTagline')}
-      live={`${st === 'BETTING' ? t('rocketLobbyBetting') : st === 'FLYING' ? t('rocketLobbyFlying') : t('rocketLobbyNext')} · 👤 ${s.round.players}`}
+      live={`${st === 'BETTING' ? t('rocketLobbyBetting') : st === 'FLYING' ? t('rocketLobbyFlying') : t('rocketLobbyNext')} · 👤 ${s.round.players}${s.limits ? ` · ${t('rocketFrom', { min: s.limits.minBet.birr })}` : ''}`}
       extra={
         <span className="flex gap-1">
           {s.history.slice(0, 4).map((h) => (
